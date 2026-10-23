@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.trucdecomptable.notesdefrais.data.Depense
 import com.trucdecomptable.notesdefrais.data.NotesDb
 import com.trucdecomptable.notesdefrais.data.Projet
+import com.trucdecomptable.notesdefrais.data.TauxBdf
+import com.trucdecomptable.notesdefrais.data.TauxBdfClient
 import com.trucdecomptable.notesdefrais.data.TypeDepense
 import com.trucdecomptable.notesdefrais.export.ExportManager
 import com.trucdecomptable.notesdefrais.ocr.ReceiptOcr
@@ -34,6 +36,27 @@ import java.time.LocalDate
 class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val dao = NotesDb.get(application).dao()
+    private val tauxClient = TauxBdfClient(application)
+
+    init {
+        // Rates come from trucdecomptable.fr (Banque de France series). A phone
+        // that is offline keeps the last downloaded copy.
+        viewModelScope.launch { tauxClient.rafraichir() }
+    }
+
+    /** Rate for the expense date, from the Banque de France series. */
+    fun tauxBdf(dateIso: String, devise: String): TauxBdf.Taux? =
+        runCatching { tauxClient.taux(dateIso, devise) }.getOrNull()
+
+    fun couvertureTaux(): Pair<String, String>? = runCatching { tauxClient.couverture() }.getOrNull()
+
+    /** Manual refresh from the top bar. */
+    fun rafraichirTaux() {
+        viewModelScope.launch {
+            val ok = tauxClient.rafraichir(force = true)
+            _message.value = if (ok) "Parités Banque de France mises à jour" else "Parités inchangées ou injoignables"
+        }
+    }
 
     val projets: StateFlow<List<Projet>> = dao.projets()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

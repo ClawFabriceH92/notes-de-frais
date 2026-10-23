@@ -191,6 +191,7 @@ object ExportManager {
         synthese.ligne(entete("Total EUR"), XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT))
         synthese.ligne(entete("Dont TVA"), XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.MONTANT))
         synthese.ligne(entete("Édité le"), XlsxWriter.Cellule(texte = LocalDate.now().toString()))
+        synthese.ligne(entete("Taux de change"), XlsxWriter.Cellule(texte = "Banque de France (parité du jour de la dépense)"))
         synthese.ligne()
         synthese.ligne(entete("Type"), entete("Nombre"), entete("Total EUR"), entete("Dont TVA"))
         for ((type, valeurs) in parType) {

@@ -138,6 +138,7 @@ fun Racine(vm: NotesViewModel = viewModel()) {
             initiale = initiale,
             onAnnuler = vm::fermerEditeur,
             onValider = vm::validerBrouillon,
+            tauxPour = vm::tauxBdf,
         )
     }
 
@@ -147,6 +148,7 @@ fun Racine(vm: NotesViewModel = viewModel()) {
             onAnnuler = vm::fermerEditeur,
             onValider = vm::validerBrouillon,
             onSupprimer = { vm.supprimerDepense(it); vm.fermerEditeur() },
+            tauxPour = vm::tauxBdf,
         )
     }
 

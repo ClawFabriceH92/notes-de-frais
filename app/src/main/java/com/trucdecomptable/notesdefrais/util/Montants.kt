@@ -14,3 +14,11 @@ fun centimesDe(texte: String): Long? {
 
 fun centimesVersTexte(centimes: Long): String =
     BigDecimal(centimes).movePointLeft(2).setScale(2, RoundingMode.HALF_UP).toPlainString().replace('.', ',')
+
+/** Parity as displayed and edited: 1.1205 -> "1,1205". */
+fun pariteTexte(valeur: Double): String =
+    BigDecimal.valueOf(valeur)
+        .setScale(6, RoundingMode.HALF_UP)
+        .stripTrailingZeros()
+        .toPlainString()
+        .replace('.', ',')

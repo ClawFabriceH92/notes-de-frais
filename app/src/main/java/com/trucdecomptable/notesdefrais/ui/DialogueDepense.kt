@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,9 +38,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.trucdecomptable.notesdefrais.data.Depense
+import com.trucdecomptable.notesdefrais.data.TauxBdf
 import com.trucdecomptable.notesdefrais.data.TypeDepense
 import com.trucdecomptable.notesdefrais.util.centimesDe
 import com.trucdecomptable.notesdefrais.util.centimesVersTexte
+import com.trucdecomptable.notesdefrais.util.pariteTexte
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
@@ -60,6 +63,7 @@ fun DialogueDepense(
     onAnnuler: () -> Unit,
     onValider: (Depense) -> Unit,
     onSupprimer: ((Depense) -> Unit)? = null,
+    tauxPour: (String, String) -> TauxBdf.Taux? = { _, _ -> null },
 ) {
     var date by remember { mutableStateOf(initiale.date) }
     var montant by remember { mutableStateOf(if (initiale.montantCentimes > 0) centimesVersTexte(initiale.montantCentimes) else "") }
@@ -70,6 +74,20 @@ fun DialogueDepense(
     var ventiler by remember { mutableStateOf(initiale.tvaTauxBp != null) }
     var tauxTva by remember { mutableStateOf(initiale.tvaTauxBp ?: 2000) }
     var choixDate by remember { mutableStateOf(false) }
+    var tauxBdf by remember { mutableStateOf<TauxBdf.Taux?>(null) }
+
+    // The rate is the Banque de France parity for the expense date, published
+    // by trucdecomptable.fr. It fills the field, and stays editable.
+    LaunchedEffect(date, devise) {
+        if (devise == "EUR") {
+            tauxBdf = null
+            taux = ""
+            return@LaunchedEffect
+        }
+        val trouve = tauxPour(date.trim(), devise)
+        tauxBdf = trouve
+        if (trouve != null && taux.isBlank()) taux = pariteTexte(trouve.valeur)
+    }
 
     val montantCentimes = centimesDe(montant)
     val valide = date.isNotBlank() && montantCentimes != null && montantCentimes > 0L
@@ -124,6 +142,26 @@ fun DialogueDepense(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    val trouve = tauxBdf
+                    if (trouve != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Banque de France · ${trouve.libelle()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (taux != pariteTexte(trouve.valeur)) {
+                                TextButton(onClick = { taux = pariteTexte(trouve.valeur) }) {
+                                    Text("Rétablir")
+                                }
+                            }
+                        }
+                    } else {
+                        Text(
+                            "Aucune parité publiée pour cette date : saisir le taux à la main.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
 
                 Text("Type de dépense", style = MaterialTheme.typography.labelLarge)
