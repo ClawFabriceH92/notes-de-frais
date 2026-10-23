@@ -9,6 +9,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -16,6 +18,9 @@ interface NotesDao {
 
     @Query("SELECT * FROM projets ORDER BY creeLe DESC")
     fun projets(): Flow<List<Projet>>
+
+    @Query("SELECT * FROM projets ORDER BY creeLe DESC")
+    suspend fun tousLesProjets(): List<Projet>
 
     @Insert
     suspend fun ajouterProjet(projet: Projet): Long
@@ -34,6 +39,9 @@ interface NotesDao {
 
     @Query("SELECT * FROM depenses WHERE projetId = :projetId ORDER BY date ASC, creeLe ASC")
     suspend fun depensesSync(projetId: Long): List<Depense>
+
+    @Query("SELECT * FROM depenses ORDER BY date ASC")
+    suspend fun toutesLesDepenses(): List<Depense>
 
     @Insert
     suspend fun ajouterDepense(depense: Depense): Long
@@ -54,7 +62,7 @@ interface NotesDao {
     suspend fun compterFichier(fichier: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class], version = 1, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class], version = 2, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
 
@@ -62,12 +70,33 @@ abstract class NotesDb : RoomDatabase() {
         @Volatile
         private var instance: NotesDb? = null
 
+        /**
+         * Real migration rather than a destructive one: a new version of the app
+         * must never wipe the expenses already recorded. Columns are added with
+         * defaults, so version 1 rows stay valid.
+         */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE depenses ADD COLUMN distanceKm INTEGER")
+                db.execSQL("ALTER TABLE depenses ADD COLUMN trajet TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE depenses ADD COLUMN indemniteCentimes INTEGER")
+                db.execSQL("ALTER TABLE depenses ADD COLUMN fraisAnnexesCentimes INTEGER")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 NotesDb::class.java,
                 "notes-de-frais.db",
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+        }
+
+        /** Closes the database so a restore can replace the file on disk. */
+        @Synchronized
+        fun fermer() {
+            instance?.close()
+            instance = null
         }
     }
 }

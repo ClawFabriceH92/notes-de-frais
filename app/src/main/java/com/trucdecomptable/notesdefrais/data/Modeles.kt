@@ -14,6 +14,7 @@ enum class TypeDepense(val label: String, val slug: String) {
     TAXI("Taxi", "taxi"),
     RESTAURANT_MIDI("Restaurant midi", "restaurant-midi"),
     RESTAURANT_SOIR("Restaurant soir", "restaurant-soir"),
+    INDENNITE_KM("Indemnité km", "indemnite-km"),
     AUTRE("Autres", "autres");
 
     companion object {
@@ -55,8 +56,18 @@ data class Depense(
     val fichier: String? = null,
     val texteOcr: String = "",
     val creeLe: Long = System.currentTimeMillis(),
+    /** Kilometres of a mileage allowance trip, null for an ordinary expense. */
+    val distanceKm: Int? = null,
+    /** "Asnières → Rouen" for a mileage allowance. */
+    val trajet: String = "",
+    /** The mileage part alone; [montantCentimes] adds the tolls and parking. */
+    val indemniteCentimes: Long? = null,
+    /** Tolls and parking added to a mileage allowance, in [devise]. */
+    val fraisAnnexesCentimes: Long? = null,
 ) {
     val typeDepense: TypeDepense get() = TypeDepense.fromName(type)
+
+    val estIndemniteKm: Boolean get() = typeDepense == TypeDepense.INDENNITE_KM
 
     /** Amount in euros, or null when a foreign amount has no exchange rate. */
     val montantEurCentimes: Long?

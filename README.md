@@ -17,6 +17,16 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   à la **date de la dépense** (repli sur la dernière parité publiée, week-end
   compris), et modifiable à la main.
 - **Ventilation HT / TVA** en option, par dépense (20 %, 10 %, 5,5 %, 0 %).
+- **Paramétrage** (icône engrenage) : prénom, nom, société, adresse, SIRET,
+  email destinataire des exports, plaque, catégorie de véhicule, puissance
+  fiscale, électrique ou non, cumul kilométrique annuel, devise et TVA par défaut.
+- **Indemnité kilométrique** : le montant n'est pas saisi, il est calculé avec le
+  barème fiscal 2026 (voiture, moto, cyclomoteur ; électrique majoré de 20 %),
+  péages et stationnement en supplément, et une **feuille de route PDF** est
+  générée comme justificatif.
+- **Sauvegarde et restauration** : archive complète (base, justificatifs,
+  paramétrage), créée à la demande et **automatiquement avant chaque mise à
+  jour**, partageable par mail ou vers Drive.
 - **Export ZIP par projet** :
   - `recap.xlsx` : feuille « Dépenses » (détail + total) et feuille « Synthèse »
     (par type, dont TVA) ;

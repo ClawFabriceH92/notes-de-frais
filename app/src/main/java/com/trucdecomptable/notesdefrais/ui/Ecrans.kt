@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,6 +61,7 @@ fun EcranProjets(
     onRenommer: (Projet, String) -> Unit,
     onSupprimer: (Projet) -> Unit,
     onVerifierMaj: () -> Unit,
+    onReglages: () -> Unit = {},
 ) {
     var nouveau by remember { mutableStateOf<String?>(null) }
     var renomme by remember { mutableStateOf<Projet?>(null) }
@@ -69,6 +71,9 @@ fun EcranProjets(
             TopAppBar(
                 title = { Text("Notes de frais") },
                 actions = {
+                    IconButton(onClick = onReglages) {
+                        Icon(Icons.Default.Settings, contentDescription = "Paramétrage")
+                    }
                     IconButton(onClick = onVerifierMaj) {
                         Icon(Icons.Default.CloudDownload, contentDescription = "Vérifier les mises à jour")
                     }
@@ -198,6 +203,7 @@ fun EcranProjet(
     onManuel: () -> Unit,
     onExport: () -> Unit,
     onOuvrirDepense: (Depense) -> Unit,
+    onIndemniteKm: () -> Unit = {},
 ) {
     var menuAjout by remember { mutableStateOf(false) }
     val totalEur = depenses.sumOf { it.montantEurCentimes ?: 0L } / 100.0
@@ -232,6 +238,10 @@ fun EcranProjet(
                     DropdownMenuItem(
                         text = { Text("Choisir un fichier") },
                         onClick = { menuAjout = false; onGalerie() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Indemnité kilométrique") },
+                        onClick = { menuAjout = false; onIndemniteKm() },
                     )
                     DropdownMenuItem(
                         text = { Text("Saisie manuelle") },

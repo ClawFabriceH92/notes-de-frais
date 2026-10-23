@@ -4,13 +4,18 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.trucdecomptable.notesdefrais.backup.Sauvegarde
+import com.trucdecomptable.notesdefrais.data.BaremeKm
 import com.trucdecomptable.notesdefrais.data.Depense
 import com.trucdecomptable.notesdefrais.data.NotesDb
+import com.trucdecomptable.notesdefrais.data.Parametres
+import com.trucdecomptable.notesdefrais.data.ParametresStore
 import com.trucdecomptable.notesdefrais.data.Projet
 import com.trucdecomptable.notesdefrais.data.TauxBdf
 import com.trucdecomptable.notesdefrais.data.TauxBdfClient
 import com.trucdecomptable.notesdefrais.data.TypeDepense
 import com.trucdecomptable.notesdefrais.export.ExportManager
+import com.trucdecomptable.notesdefrais.export.FeuilleDeRoutePdf
 import com.trucdecomptable.notesdefrais.ocr.ReceiptOcr
 import com.trucdecomptable.notesdefrais.ocr.ReceiptParser
 import com.trucdecomptable.notesdefrais.util.Diag
@@ -37,6 +42,64 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val dao = NotesDb.get(application).dao()
     private val tauxClient = TauxBdfClient(application)
+    private val parametresStore = ParametresStore(application)
+
+    private val _parametres = MutableStateFlow(parametresStore.lire())
+    val parametres: StateFlow<Parametres> = _parametres.asStateFlow()
+
+    fun enregistrerParametres(nouveaux: Parametres) {
+        parametresStore.ecrire(nouveaux)
+        _parametres.value = nouveaux
+        _message.value = "Paramétrage enregistré"
+    }
+
+    /** Backup and restore, since everything lives on the phone. */
+    fun sauvegarder(motif: String = "manuel") {
+        viewModelScope.launch {
+            runCatching { Sauvegarde.creer(getApplication(), motif) }
+                .onSuccess { resume ->
+                    Sauvegarde.purger(getApplication())
+                    _sauvegarde.value = resume.fichier
+                    _message.value = "Sauvegarde prête : ${resume.depenses} dépense(s), ${resume.justificatifs} fichier(s)"
+                }
+                .onFailure {
+                    Diag.record("sauvegarde", it)
+                    _message.value = "Sauvegarde impossible : ${it.message ?: "erreur"}"
+                }
+        }
+    }
+
+    fun restaurer(uri: android.net.Uri) {
+        viewModelScope.launch {
+            runCatching { Sauvegarde.restaurer(getApplication(), uri) }
+                .onSuccess {
+                    _message.value = it.message
+                    _parametres.value = parametresStore.lire()
+                }
+                .onFailure {
+                    Diag.record("restauration", it)
+                    _message.value = "Restauration impossible : ${it.message ?: "erreur"}"
+                }
+        }
+    }
+
+    fun sauvegardeConsommee() {
+        _sauvegarde.value = null
+    }
+
+    /**
+     * Archive first, then hand the APK to the installer. Doing both in one
+     * coroutine is the point: an install that starts before the backup finishes
+     * would defeat it, and an update is exactly when data is at risk.
+     */
+    fun sauvegarderPuisInstaller(installer: () -> Unit) {
+        viewModelScope.launch {
+            runCatching { Sauvegarde.creer(getApplication(), "avant-maj") }
+                .onSuccess { Diag.record("sauvegarde", "archive avant mise à jour : ${it.fichier.name}") }
+                .onFailure { Diag.record("sauvegarde/avant-maj", it) }
+            installer()
+        }
+    }
 
     init {
         // Rates come from trucdecomptable.fr (Banque de France series). A phone
@@ -89,6 +152,69 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _export = MutableStateFlow<File?>(null)
     val export: StateFlow<File?> = _export.asStateFlow()
+
+    private val _sauvegarde = MutableStateFlow<File?>(null)
+    val sauvegarde: StateFlow<File?> = _sauvegarde.asStateFlow()
+
+    // ------------------------------------------------------------------ indemnité km
+
+    /**
+     * A mileage allowance has no receipt: the amount comes from the official
+     * bracket, and the proof is a generated feuille de route.
+     */
+    fun ajouterIndemniteKm(
+        date: String,
+        distanceKm: Int,
+        trajet: String,
+        fraisAnnexesCentimes: Long,
+        libelle: String,
+    ) {
+        val projet = _projet.value ?: return
+        if (distanceKm <= 0) {
+            _message.value = "Distance manquante"
+            return
+        }
+        viewModelScope.launch {
+            val p = _parametres.value
+            val indemnite = BaremeKm.indemniteCentimes(
+                distanceKm = distanceKm,
+                cumulAnnuelKm = p.kmAnnuels,
+                categorie = p.categorie,
+                puissanceFiscale = p.puissanceFiscale,
+                electrique = p.electrique,
+            )
+            val depense = Depense(
+                projetId = projet.id,
+                date = date,
+                montantCentimes = indemnite + fraisAnnexesCentimes,
+                devise = "EUR",
+                type = TypeDepense.INDENNITE_KM.name,
+                libelle = libelle,
+                distanceKm = distanceKm,
+                trajet = trajet,
+                indemniteCentimes = indemnite,
+                fraisAnnexesCentimes = fraisAnnexesCentimes,
+            )
+            val fichier = withContext(Dispatchers.IO) {
+                runCatching {
+                    val nom = "feuille-de-route-${java.util.UUID.randomUUID()}.pdf"
+                    val cible = File(ExportManager.dossierJustificatifs(getApplication()), nom)
+                    FeuilleDeRoutePdf.generer(cible, p, projet, depense)
+                    nom
+                }.onFailure { Diag.record("feuille-de-route", it) }.getOrNull()
+            }
+            val id = dao.ajouterDepense(depense.copy(fichier = fichier))
+            // The yearly total drives the bracket: keep it in step with reality.
+            if (p.kmAnnuels > 0) enregistrerParametresSilencieux(p.copy(kmAnnuels = p.kmAnnuels + distanceKm))
+            _derniere.value = depense.copy(id = id, fichier = fichier)
+            _message.value = "Indemnité km · ${NotesViewModel.montantLisible(depense)} · $distanceKm km"
+        }
+    }
+
+    private fun enregistrerParametresSilencieux(nouveaux: Parametres) {
+        parametresStore.ecrire(nouveaux)
+        _parametres.value = nouveaux
+    }
 
     // ------------------------------------------------------------------ projets
 
@@ -203,11 +329,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun ajouterManuellement() {
         val projet = _projet.value ?: return
+        val p = _parametres.value
         _brouillon.value = Depense(
             projetId = projet.id,
             date = LocalDate.now().toString(),
             montantCentimes = 0L,
+            devise = p.deviseDefaut,
             type = TypeDepense.AUTRE.name,
+            tvaTauxBp = p.tvaDefautBp.takeIf { it > 0 },
         )
     }
 
@@ -267,7 +396,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     _message.value = "Aucune dépense à exporter"
                     return@launch
                 }
-                val fichier = ExportManager.exporter(getApplication(), projet, liste)
+                val fichier = ExportManager.exporter(getApplication(), projet, liste, _parametres.value)
                 _export.value = fichier
                 _message.value = "ZIP prêt : ${liste.size} justificatif(s)"
             } catch (e: Exception) {

@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import com.trucdecomptable.notesdefrais.data.Depense
+import com.trucdecomptable.notesdefrais.data.Parametres
 import com.trucdecomptable.notesdefrais.data.Projet
 import com.trucdecomptable.notesdefrais.data.TypeDepense
 import kotlinx.coroutines.Dispatchers
@@ -52,17 +53,23 @@ object ExportManager {
      * Zips the project: recap.xlsx plus one PDF per expense. Returned file lives
      * in filesDir/exports so the FileProvider can hand it to any app.
      */
-    suspend fun exporter(context: Context, projet: Projet, depenses: List<Depense>): File =
+    suspend fun exporter(
+        context: Context,
+        projet: Projet,
+        depenses: List<Depense>,
+        parametres: Parametres = Parametres(),
+    ): File =
         withContext(Dispatchers.IO) {
             val slug = slugProjet(projet.nom)
+            val prefixe = parametres.societe.takeIf { it.isNotBlank() }?.let { slugProjet(it) + "_" }.orEmpty()
             val horodatage = java.time.LocalDateTime.now()
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
-            val zipFile = File(dossierExports(context), "${slug}_$horodatage.zip")
+            val zipFile = File(dossierExports(context), "$prefixe${slug}_$horodatage.zip")
             val pris = mutableSetOf<String>()
 
             ZipOutputStream(FileOutputStream(zipFile)).use { zip ->
                 zip.putNextEntry(ZipEntry("recap.xlsx"))
-                XlsxWriter().ecrire(feuilles(projet, depenses), zip)
+                XlsxWriter().ecrire(feuilles(projet, depenses, parametres), zip)
                 zip.closeEntry()
 
                 for (depense in depenses.sortedWith(compareBy({ it.date }, { it.creeLe }))) {
@@ -136,22 +143,29 @@ object ExportManager {
     }
 
     /** The recap workbook: one detail sheet, one recap by expense type. */
-    fun feuilles(projet: Projet, depenses: List<Depense>): List<XlsxWriter.Feuille> {
+    fun feuilles(
+        projet: Projet,
+        depenses: List<Depense>,
+        parametres: Parametres = Parametres(),
+    ): List<XlsxWriter.Feuille> {
         val detail = XlsxWriter.Feuille("Dépenses")
-        detail.largeurs.addAll(listOf(12, 18, 30, 12, 8, 10, 12, 8, 12, 12, 46))
+        detail.largeurs.addAll(listOf(12, 18, 30, 12, 8, 10, 12, 8, 12, 12, 10, 46))
         detail.ligne(
             entete("Date"), entete("Type"), entete("Libellé"), entete("Montant"), entete("Devise"),
             entete("Taux"), entete("Montant EUR"), entete("TVA %"), entete("HT EUR"), entete("TVA EUR"),
+            entete("Distance km"),
             entete("Justificatif"),
         )
 
         var totalEur = 0.0
         var totalTva = 0.0
+        var totalKm = 0
         val parType = linkedMapOf<TypeDepense, Triple<Int, Double, Double>>()
 
         for (d in depenses.sortedWith(compareBy({ it.date }, { it.creeLe }))) {
             val eur = d.montantEurCentimes?.let { it / 100.0 }
             if (eur != null) totalEur += eur
+            totalKm += d.distanceKm ?: 0
             val tva = d.tvaCentimes?.let { it / 100.0 }
             if (tva != null) totalTva += tva
             val ht = d.htCentimes?.let { it / 100.0 }
@@ -169,6 +183,7 @@ object ExportManager {
                 d.tvaTauxBp?.let { XlsxWriter.Cellule(nombre = it / 100.0, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),
                 ht?.let { XlsxWriter.Cellule(nombre = it, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),
                 tva?.let { XlsxWriter.Cellule(nombre = it, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),
+                d.distanceKm?.let { XlsxWriter.Cellule(nombre = it.toDouble()) } ?: XlsxWriter.Cellule(),
                 XlsxWriter.Cellule(texte = d.fichier?.let { nomJustificatif(slugProjet(projet.nom), d) } ?: ""),
             )
         }
@@ -181,12 +196,19 @@ object ExportManager {
             XlsxWriter.Cellule(),
             XlsxWriter.Cellule(),
             XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.GRAS_MONTANT),
+            XlsxWriter.Cellule(nombre = totalKm.toDouble()),
             XlsxWriter.Cellule(texte = "${depenses.size} dépense(s)"),
         )
 
         val synthese = XlsxWriter.Feuille("Synthèse")
         synthese.largeurs.addAll(listOf(20, 10, 14, 12))
         synthese.ligne(entete("Projet"), XlsxWriter.Cellule(texte = projet.nom))
+        if (parametres.societe.isNotBlank()) {
+            synthese.ligne(entete("Société"), XlsxWriter.Cellule(texte = parametres.societe))
+        }
+        if (parametres.identite.isNotBlank()) {
+            synthese.ligne(entete("Titulaire"), XlsxWriter.Cellule(texte = parametres.identite))
+        }
         synthese.ligne(entete("Dépenses"), XlsxWriter.Cellule(nombre = depenses.size.toDouble()))
         synthese.ligne(entete("Total EUR"), XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT))
         synthese.ligne(entete("Dont TVA"), XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.MONTANT))

@@ -2,6 +2,7 @@
 <paths>
     <files-path name="justificatifs" path="justificatifs/" />
     <files-path name="exports" path="exports/" />
+    <files-path name="sauvegardes" path="sauvegardes/" />
     <files-path name="updates" path="updates/" />
     <cache-path name="photos" path="photos/" />
     <cache-path name="tmp" path="." />

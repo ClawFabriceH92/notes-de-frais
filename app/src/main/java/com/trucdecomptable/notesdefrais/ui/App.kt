@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -29,11 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.trucdecomptable.notesdefrais.data.Parametres
 import com.trucdecomptable.notesdefrais.update.UpdateManager
 import com.trucdecomptable.notesdefrais.util.Diag
 import java.io.File
 
-/** Whole app: project list, project detail, dialogs and the update prompt. */
+/** Whole app: projects, project detail, settings, dialogs and the update prompt. */
 @Composable
 fun Racine(vm: NotesViewModel = viewModel()) {
     val context = LocalContext.current
@@ -46,10 +46,14 @@ fun Racine(vm: NotesViewModel = viewModel()) {
     val edition by vm.edition.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val export by vm.export.collectAsStateWithLifecycle()
+    val sauvegarde by vm.sauvegarde.collectAsStateWithLifecycle()
     val derniere by vm.derniere.collectAsStateWithLifecycle()
+    val parametres by vm.parametres.collectAsStateWithLifecycle()
 
     val snackbar = remember { SnackbarHostState() }
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
+    var reglages by remember { mutableStateOf(false) }
+    var indemnite by remember { mutableStateOf(false) }
 
     val launcherPhoto = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture(),
@@ -59,12 +63,42 @@ fun Racine(vm: NotesViewModel = viewModel()) {
         ActivityResultContracts.GetContent(),
     ) { uri -> uri?.let(vm::traiterJustificatif) }
 
+    val launcherRestauration = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri -> uri?.let(vm::restaurer) }
+
     fun prendrePhoto() {
         val dossier = File(context.cacheDir, "photos").apply { mkdirs() }
         val fichier = File(dossier, "photo-${System.currentTimeMillis()}.jpg")
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", fichier)
         uriPhoto = uri
         launcherPhoto.launch(uri)
+    }
+
+    /** Hands a file to another app; mail is pre-addressed from the settings. */
+    fun partager(fichier: File, type: String, sujet: String, email: String) {
+        try {
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", fichier)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                this.type = type
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, sujet)
+                if (email.isNotBlank()) {
+                    putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
+                    putExtra(Intent.EXTRA_TEXT, "Notes de frais : $sujet")
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(
+                if (email.isNotBlank()) {
+                    Intent.createChooser(intent, "Envoyer à $email")
+                } else {
+                    Intent.createChooser(intent, "Envoyer le fichier")
+                },
+            )
+        } catch (e: Exception) {
+            Diag.record("partage", e)
+        }
     }
 
     // Messages: the one right after a save offers a one-tap correction.
@@ -80,41 +114,56 @@ fun Racine(vm: NotesViewModel = viewModel()) {
         vm.derniereOubliee()
     }
 
-    // The ZIP is handed to any app: mail, Drive, Nextcloud, WhatsApp.
+    // The ZIP goes to the configured recipient, or wherever the user picks.
     LaunchedEffect(export) {
         val fichier = export ?: return@LaunchedEffect
-        try {
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", fichier)
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/zip"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "Notes de frais — ${projet?.nom.orEmpty()}")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(Intent.createChooser(intent, "Envoyer le ZIP"))
-        } catch (e: Exception) {
-            Diag.record("partage", e)
-        }
+        val nom = projet?.nom.orEmpty()
+        partager(
+            fichier = fichier,
+            type = "application/zip",
+            sujet = "Notes de frais · $nom · ${parametres.mention}",
+            email = parametres.emailDestinataire,
+        )
         vm.exportConsomme()
     }
 
-    // In-app update check, same mechanism as ollamachat.
+    LaunchedEffect(sauvegarde) {
+        val fichier = sauvegarde ?: return@LaunchedEffect
+        partager(
+            fichier = fichier,
+            type = "application/zip",
+            sujet = "Sauvegarde Notes de frais · ${parametres.mention}",
+            email = parametres.emailDestinataire,
+        )
+        vm.sauvegardeConsommee()
+    }
+
     val etatMaj by UpdateManager.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { UpdateManager.checkAtLaunch("") }
 
     Box(Modifier.fillMaxSize()) {
         val courant = projet
-        if (courant == null) {
-            EcranProjets(
+        when {
+            reglages -> EcranReglages(
+                initial = parametres,
+                couvertureTaux = vm.couvertureTaux(),
+                onRetour = { reglages = false },
+                onEnregistrer = vm::enregistrerParametres,
+                onSauvegarder = { vm.sauvegarder() },
+                onRestaurer = { launcherRestauration.launch("application/zip") },
+            )
+
+            courant == null -> EcranProjets(
                 projets = projets,
                 onOuvrir = vm::ouvrirProjet,
                 onCreer = vm::creerProjet,
                 onRenommer = vm::renommerProjet,
                 onSupprimer = vm::supprimerProjet,
                 onVerifierMaj = { UpdateManager.checkNow() },
+                onReglages = { reglages = true },
             )
-        } else {
-            EcranProjet(
+
+            else -> EcranProjet(
                 projet = courant,
                 depenses = depenses,
                 traitement = traitement,
@@ -124,6 +173,7 @@ fun Racine(vm: NotesViewModel = viewModel()) {
                 onManuel = vm::ajouterManuellement,
                 onExport = vm::exporter,
                 onOuvrirDepense = vm::editer,
+                onIndemniteKm = { indemnite = true },
             )
         }
 
@@ -152,10 +202,24 @@ fun Racine(vm: NotesViewModel = viewModel()) {
         )
     }
 
+    if (indemnite) {
+        DialogueIndemniteKm(
+            parametres = parametres,
+            onAnnuler = { indemnite = false },
+            onValider = { date, distance, trajet, frais, libelle ->
+                vm.ajouterIndemniteKm(date, distance, trajet, frais, libelle)
+                indemnite = false
+            },
+        )
+    }
+
     DialogueMiseAJour(
         etat = etatMaj,
         onTelecharger = { UpdateManager.download(context) },
-        onInstaller = { UpdateManager.install(context) },
+        onInstaller = {
+            // A schema migration is exactly when data can be lost: archive first.
+            vm.sauvegarderPuisInstaller { UpdateManager.install(context) }
+        },
         onAutoriser = { UpdateManager.openInstallSettings(context) },
         onFermer = { UpdateManager.dismiss() },
     )
@@ -194,7 +258,7 @@ private fun DialogueMiseAJour(
         is UpdateManager.State.ReadyToInstall -> AlertDialog(
             onDismissRequest = onFermer,
             title = { Text("Prêt à installer") },
-            text = { Text("La version ${etat.version} est téléchargée.") },
+            text = { Text("La version ${etat.version} est téléchargée. Une sauvegarde complète est créée avant l'installation.") },
             confirmButton = { TextButton(onClick = onInstaller) { Text("Installer") } },
             dismissButton = { TextButton(onClick = onFermer) { Text("Plus tard") } },
         )
