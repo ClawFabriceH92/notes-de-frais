@@ -7,9 +7,11 @@ import androidx.lifecycle.viewModelScope
 import com.trucdecomptable.notesdefrais.backup.Sauvegarde
 import com.trucdecomptable.notesdefrais.data.BaremeKm
 import com.trucdecomptable.notesdefrais.data.Depense
+import com.trucdecomptable.notesdefrais.data.Doublons
 import com.trucdecomptable.notesdefrais.data.NotesDb
 import com.trucdecomptable.notesdefrais.data.Parametres
 import com.trucdecomptable.notesdefrais.data.ParametresStore
+import com.trucdecomptable.notesdefrais.data.Plafonds
 import com.trucdecomptable.notesdefrais.data.Projet
 import com.trucdecomptable.notesdefrais.data.TauxBdf
 import com.trucdecomptable.notesdefrais.data.TauxBdfClient
@@ -244,6 +246,42 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Closing a project freezes it: the report has been handed over. */
+    fun cloturerProjet(projet: Projet) {
+        viewModelScope.launch {
+            val ferme = projet.copy(cloture = !projet.cloture, clotureLe = if (projet.cloture) null else System.currentTimeMillis())
+            dao.majProjet(ferme)
+            if (_projet.value?.id == projet.id) _projet.value = ferme
+            _message.value = if (ferme.cloture) "Projet clôturé (lecture seule)" else "Projet réouvert"
+        }
+    }
+
+    /** Duplicates the project's name and settings, without its expenses. */
+    fun dupliquerProjet(projet: Projet) {
+        viewModelScope.launch {
+            val id = dao.ajouterProjet(Projet(nom = "${projet.nom} (copie)"))
+            _projet.value = dao.projet(id)
+            _message.value = "Projet dupliqué"
+        }
+    }
+
+    /** Adds a second attachment (invoice, back of the receipt) to an expense. */
+    fun ajouterPieceJointe(depense: Depense, uri: Uri) {
+        viewModelScope.launch {
+            runCatching {
+                val fichier = withContext(Dispatchers.IO) { ReceiptOcr.stocker(getApplication(), uri) }
+                val liste = depense.tousLesFichiers + fichier.name
+                val maj = depense.copy(fichiersSupplementaires = liste.drop(1).joinToString("|"))
+                dao.majDepense(maj)
+                _edition.value = maj
+                _message.value = "Pièce jointe ajoutée"
+            }.onFailure {
+                Diag.record("piece-jointe", it)
+                _message.value = "Ajout impossible : ${it.message ?: "erreur"}"
+            }
+        }
+    }
+
     fun supprimerProjet(projet: Projet) {
         viewModelScope.launch {
             val fichiers = withContext(Dispatchers.IO) { dao.depensesSync(projet.id) }
@@ -309,7 +347,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     val id = dao.ajouterDepense(avecTaux)
                     _derniere.value = avecTaux.copy(id = id)
                     val devise = if (avecTaux.tauxChange == null && avecTaux.devise != "EUR") " · taux BdF absent" else ""
-                    _message.value = "Enregistré · ${montantLisible(avecTaux)} · ${avecTaux.typeDepense.label}$devise"
+                    val avertissement = avertissements(avecTaux.copy(id = id))
+                    _message.value = avertissement
+                        ?: "Enregistré · ${montantLisible(avecTaux)} · ${avecTaux.typeDepense.label}$devise"
                 } else {
                     val manquants = buildList {
                         if (champs.date == null) add("date")
@@ -353,14 +393,28 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             if (finalisee.id == 0L) {
                 val id = dao.ajouterDepense(finalisee)
                 _derniere.value = finalisee.copy(id = id)
-                _message.value = "Dépense ajoutée"
+                val avertissement = avertissements(finalisee)
+                _message.value = avertissement ?: "Dépense ajoutée"
             } else {
                 dao.majDepense(finalisee)
-                _message.value = "Dépense modifiée"
+                val avertissement = avertissements(finalisee)
+                _message.value = avertissement ?: "Dépense modifiée"
             }
             _brouillon.value = null
             _edition.value = null
         }
+    }
+
+    /**
+     * Duplicate and ceiling checks: neither blocks the save, because a real
+     * expense stays real, but both are worth saying out loud once.
+     */
+    private suspend fun avertissements(depense: Depense): String? {
+        val existantes = dao.depensesSync(depense.projetId)
+        return listOfNotNull(
+            Doublons.alerte(depense, existantes.filter { it.id != depense.id }),
+            Plafonds.alerte(depense, _parametres.value.zoneParis),
+        ).joinToString(" · ").ifBlank { null }
     }
 
     fun editer(depense: Depense) {

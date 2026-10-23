@@ -73,20 +73,25 @@ object ExportManager {
                 zip.closeEntry()
 
                 for (depense in depenses.sortedWith(compareBy({ it.date }, { it.creeLe }))) {
-                    val source = depense.fichier?.let { File(dossierJustificatifs(context), it) }
-                        ?.takeIf { it.exists() } ?: continue
-                    val base = nomJustificatif(slug, depense)
-                    val nom = unique(base, pris)
-                    zip.putNextEntry(ZipEntry(nom))
-                    if (estPdf(source)) {
-                        source.inputStream().use { it.copyTo(zip) }
-                    } else {
-                        val pdf = File(context.cacheDir, "tmp-${depense.id}.pdf")
-                        imageVersPdf(source, pdf)
-                        pdf.inputStream().use { it.copyTo(zip) }
-                        pdf.delete()
+                    val base = nomJustificatif(slug, depense).removeSuffix(".pdf")
+                    var rang = 0
+                    for (nomFichier in depense.tousLesFichiers) {
+                        val source = File(dossierJustificatifs(context), nomFichier).takeIf { it.exists() } ?: continue
+                        // Second and later attachments are named _annexe2, _annexe3…
+                        val propose = if (rang == 0) "$base.pdf" else "${base}_annexe${rang + 1}.pdf"
+                        val nom = unique(propose, pris)
+                        zip.putNextEntry(ZipEntry(nom))
+                        if (estPdf(source)) {
+                            source.inputStream().use { it.copyTo(zip) }
+                        } else {
+                            val pdf = File(context.cacheDir, "tmp-${depense.id}-$rang.pdf")
+                            imageVersPdf(source, pdf)
+                            pdf.inputStream().use { it.copyTo(zip) }
+                            pdf.delete()
+                        }
+                        zip.closeEntry()
+                        rang++
                     }
-                    zip.closeEntry()
                 }
             }
             zipFile
@@ -149,22 +154,24 @@ object ExportManager {
         parametres: Parametres = Parametres(),
     ): List<XlsxWriter.Feuille> {
         val detail = XlsxWriter.Feuille("Dépenses")
-        detail.largeurs.addAll(listOf(12, 18, 30, 12, 8, 10, 12, 8, 12, 12, 10, 46))
+        detail.largeurs.addAll(listOf(12, 18, 30, 12, 8, 10, 12, 8, 12, 12, 10, 12, 46))
         detail.ligne(
             entete("Date"), entete("Type"), entete("Libellé"), entete("Montant"), entete("Devise"),
             entete("Taux"), entete("Montant EUR"), entete("TVA %"), entete("HT EUR"), entete("TVA EUR"),
-            entete("Distance km"),
+            entete("Distance km"), entete("Refacturable"),
             entete("Justificatif"),
         )
 
         var totalEur = 0.0
         var totalTva = 0.0
         var totalKm = 0
+        var totalRefacturable = 0.0
         val parType = linkedMapOf<TypeDepense, Triple<Int, Double, Double>>()
 
         for (d in depenses.sortedWith(compareBy({ it.date }, { it.creeLe }))) {
             val eur = d.montantEurCentimes?.let { it / 100.0 }
             if (eur != null) totalEur += eur
+            if (eur != null && d.refacturable) totalRefacturable += eur
             totalKm += d.distanceKm ?: 0
             val tva = d.tvaCentimes?.let { it / 100.0 }
             if (tva != null) totalTva += tva
@@ -184,6 +191,7 @@ object ExportManager {
                 ht?.let { XlsxWriter.Cellule(nombre = it, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),
                 tva?.let { XlsxWriter.Cellule(nombre = it, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),
                 d.distanceKm?.let { XlsxWriter.Cellule(nombre = it.toDouble()) } ?: XlsxWriter.Cellule(),
+                XlsxWriter.Cellule(texte = if (d.refacturable) "Oui" else ""),
                 XlsxWriter.Cellule(texte = d.fichier?.let { nomJustificatif(slugProjet(projet.nom), d) } ?: ""),
             )
         }
@@ -197,6 +205,7 @@ object ExportManager {
             XlsxWriter.Cellule(),
             XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.GRAS_MONTANT),
             XlsxWriter.Cellule(nombre = totalKm.toDouble()),
+            XlsxWriter.Cellule(),
             XlsxWriter.Cellule(texte = "${depenses.size} dépense(s)"),
         )
 
@@ -213,6 +222,9 @@ object ExportManager {
         synthese.ligne(entete("Total EUR"), XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT))
         synthese.ligne(entete("Dont TVA"), XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.MONTANT))
         synthese.ligne(entete("Édité le"), XlsxWriter.Cellule(texte = LocalDate.now().toString()))
+        if (totalRefacturable > 0.0) {
+            synthese.ligne(entete("Dont refacturable"), XlsxWriter.Cellule(nombre = totalRefacturable, style = XlsxWriter.MONTANT))
+        }
         synthese.ligne(entete("Taux de change"), XlsxWriter.Cellule(texte = "Banque de France (parité du jour de la dépense)"))
         synthese.ligne()
         synthese.ligne(entete("Type"), entete("Nombre"), entete("Total EUR"), entete("Dont TVA"))

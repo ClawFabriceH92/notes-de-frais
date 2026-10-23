@@ -67,6 +67,9 @@ fun EcranReglages(
     var kmAnnuels by remember { mutableStateOf(initial.kmAnnuels.toString()) }
     var devise by remember { mutableStateOf(initial.deviseDefaut) }
     var tauxTva by remember { mutableStateOf(initial.tvaDefautBp) }
+    var zoneParis by remember { mutableStateOf(initial.zoneParis) }
+    var code by remember { mutableStateOf("") }
+    var codeHash by remember { mutableStateOf(initial.codeAccesHash) }
 
     fun courant() = Parametres(
         nom = nom.trim(),
@@ -82,6 +85,8 @@ fun EcranReglages(
         kmAnnuels = kmAnnuels.toIntOrNull() ?: 0,
         deviseDefaut = devise,
         tvaDefautBp = tauxTva,
+        zoneParis = zoneParis,
+        codeAccesHash = if (code.isBlank()) codeHash else com.trucdecomptable.notesdefrais.util.empreinte(code),
     )
 
     Scaffold(
@@ -167,6 +172,34 @@ fun EcranReglages(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(2000 to "20 %", 1000 to "10 %", 550 to "5,5 %", 0 to "Aucun").forEach { (bp, texte) ->
                     FilterChip(selected = tauxTva == bp, onClick = { tauxTva = bp }, label = { Text(texte) })
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = zoneParis, onCheckedChange = { zoneParis = it })
+                Text(
+                    "  Zone Paris / 92-93-94 (plafond hôtel plus élevé)",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Verrouillage", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (initial.verrouillageActif) "Code d'accès activé. Saisir un nouveau code pour le changer."
+                else "Aucun code : l'app s'ouvre directement.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedTextField(
+                value = code,
+                onValueChange = { code = it.filter { c -> c.isDigit() }.take(8) },
+                label = { Text("Nouveau code (chiffres)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (initial.verrouillageActif) {
+                OutlinedButton(onClick = { codeHash = ""; code = "" }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Supprimer le code d'accès")
                 }
             }
 

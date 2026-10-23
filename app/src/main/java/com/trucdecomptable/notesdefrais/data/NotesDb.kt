@@ -62,7 +62,7 @@ interface NotesDao {
     suspend fun compterFichier(fichier: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class], version = 2, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class], version = 3, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
 
@@ -73,7 +73,7 @@ abstract class NotesDb : RoomDatabase() {
         /**
          * Real migration rather than a destructive one: a new version of the app
          * must never wipe the expenses already recorded. Columns are added with
-         * defaults, so version 1 rows stay valid.
+         * defaults, so earlier rows stay valid.
          */
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -84,12 +84,21 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE depenses ADD COLUMN refacturable INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE depenses ADD COLUMN fichiersSupplementaires TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE projets ADD COLUMN cloture INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE projets ADD COLUMN clotureLe INTEGER")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 NotesDb::class.java,
                 "notes-de-frais.db",
-            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
         }
 
         /** Closes the database so a restore can replace the file on disk. */

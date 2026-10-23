@@ -64,6 +64,7 @@ fun DialogueDepense(
     onValider: (Depense) -> Unit,
     onSupprimer: ((Depense) -> Unit)? = null,
     tauxPour: (String, String) -> TauxBdf.Taux? = { _, _ -> null },
+    onAjouterPiece: ((android.net.Uri) -> Unit)? = null,
 ) {
     var date by remember { mutableStateOf(initiale.date) }
     var montant by remember { mutableStateOf(if (initiale.montantCentimes > 0) centimesVersTexte(initiale.montantCentimes) else "") }
@@ -74,7 +75,12 @@ fun DialogueDepense(
     var ventiler by remember { mutableStateOf(initiale.tvaTauxBp != null) }
     var tauxTva by remember { mutableStateOf(initiale.tvaTauxBp ?: 2000) }
     var choixDate by remember { mutableStateOf(false) }
+    var refacturable by remember { mutableStateOf(initiale.refacturable) }
     var tauxBdf by remember { mutableStateOf<TauxBdf.Taux?>(null) }
+
+    val launcherPiece = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent(),
+    ) { uri -> uri?.let { onAjouterPiece?.invoke(it) } }
 
     // The rate is the Banque de France parity for the expense date, published
     // by trucdecomptable.fr. It fills the field, and stays editable.
@@ -209,6 +215,21 @@ fun DialogueDepense(
                     label = { Text("Libellé (fournisseur, objet)") },
                     modifier = Modifier.fillMaxWidth(),
                 )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = refacturable, onCheckedChange = { refacturable = it })
+                    Spacer(Modifier.padding(start = 8.dp))
+                    Text("Refacturable au client", style = MaterialTheme.typography.bodyMedium)
+                }
+
+                if (initiale.id != 0L && onAjouterPiece != null) {
+                    TextButton(onClick = { launcherPiece.launch("image/*") }) {
+                        Text(
+                            "Ajouter une pièce jointe" +
+                                if (initiale.tousLesFichiers.size > 1) " (${initiale.tousLesFichiers.size} déjà jointes)" else "",
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -224,6 +245,7 @@ fun DialogueDepense(
                             type = type.name,
                             libelle = libelle.trim(),
                             tvaTauxBp = if (ventiler) tauxTva else null,
+                            refacturable = refacturable,
                         ),
                     )
                 },

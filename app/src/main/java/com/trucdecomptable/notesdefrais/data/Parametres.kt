@@ -25,7 +25,13 @@ data class Parametres(
     val deviseDefaut: String = "EUR",
     /** 2000 = 20 %. */
     val tvaDefautBp: Int = 2000,
+    /** Paris and the 92/93/94 departments have higher accommodation ceilings. */
+    val zoneParis: Boolean = false,
+    /** SHA-256 of the access code, empty when the app is not locked. */
+    val codeAccesHash: String = "",
 ) {
+    val verrouillageActif: Boolean get() = codeAccesHash.isNotBlank()
+
     val categorie: CategorieVehicule get() = runCatching { CategorieVehicule.valueOf(categorieVehicule) }
         .getOrDefault(CategorieVehicule.VOITURE)
 
@@ -55,6 +61,8 @@ data class Parametres(
         put("kmAnnuels", kmAnnuels)
         put("deviseDefaut", deviseDefaut)
         put("tvaDefautBp", tvaDefautBp)
+        put("zoneParis", zoneParis)
+        put("codeAccesHash", codeAccesHash)
     }
 
     companion object {
@@ -72,6 +80,8 @@ data class Parametres(
             kmAnnuels = json.optInt("kmAnnuels", 0),
             deviseDefaut = json.optString("deviseDefaut", "EUR"),
             tvaDefautBp = json.optInt("tvaDefautBp", 2000),
+            zoneParis = json.optBoolean("zoneParis", false),
+            codeAccesHash = json.optString("codeAccesHash", ""),
         )
     }
 }

@@ -54,6 +54,7 @@ fun Racine(vm: NotesViewModel = viewModel()) {
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
     var reglages by remember { mutableStateOf(false) }
     var indemnite by remember { mutableStateOf(false) }
+    var deverrouille by remember { mutableStateOf(!parametres.verrouillageActif) }
 
     val launcherPhoto = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture(),
@@ -144,6 +145,11 @@ fun Racine(vm: NotesViewModel = viewModel()) {
     Box(Modifier.fillMaxSize()) {
         val courant = projet
         when {
+            !deverrouille -> EcranVerrouillage(
+                hash = parametres.codeAccesHash,
+                onDeverrouille = { deverrouille = true },
+            )
+
             reglages -> EcranReglages(
                 initial = parametres,
                 couvertureTaux = vm.couvertureTaux(),
@@ -161,6 +167,8 @@ fun Racine(vm: NotesViewModel = viewModel()) {
                 onSupprimer = vm::supprimerProjet,
                 onVerifierMaj = { UpdateManager.checkNow() },
                 onReglages = { reglages = true },
+                onCloturer = vm::cloturerProjet,
+                onDupliquer = vm::dupliquerProjet,
             )
 
             else -> EcranProjet(
@@ -199,6 +207,7 @@ fun Racine(vm: NotesViewModel = viewModel()) {
             onValider = vm::validerBrouillon,
             onSupprimer = { vm.supprimerDepense(it); vm.fermerEditeur() },
             tauxPour = vm::tauxBdf,
+            onAjouterPiece = { uri -> vm.ajouterPieceJointe(initiale, uri) },
         )
     }
 

@@ -28,6 +28,9 @@ data class Projet(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val nom: String,
     val creeLe: Long = System.currentTimeMillis(),
+    /** A closed project is read-only: the report has been handed over. */
+    val cloture: Boolean = false,
+    val clotureLe: Long? = null,
 )
 
 /**
@@ -64,10 +67,21 @@ data class Depense(
     val indemniteCentimes: Long? = null,
     /** Tolls and parking added to a mileage allowance, in [devise]. */
     val fraisAnnexesCentimes: Long? = null,
+    /** Whether the expense is to be re-invoiced to the client. */
+    val refacturable: Boolean = false,
+    /** Extra attachments (invoice, back of the receipt), names joined by '|'. */
+    val fichiersSupplementaires: String = "",
 ) {
     val typeDepense: TypeDepense get() = TypeDepense.fromName(type)
 
     val estIndemniteKm: Boolean get() = typeDepense == TypeDepense.INDENNITE_KM
+
+    /** Every attachment of the expense, the main one first. */
+    val tousLesFichiers: List<String>
+        get() = buildList {
+            fichier?.takeIf { it.isNotBlank() }?.let { add(it) }
+            fichiersSupplementaires.split('|').map { it.trim() }.filter { it.isNotBlank() }.let { addAll(it) }
+        }
 
     /** Amount in euros, or null when a foreign amount has no exchange rate. */
     val montantEurCentimes: Long?

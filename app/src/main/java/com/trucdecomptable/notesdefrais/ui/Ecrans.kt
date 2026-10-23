@@ -15,12 +15,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,6 +65,8 @@ fun EcranProjets(
     onSupprimer: (Projet) -> Unit,
     onVerifierMaj: () -> Unit,
     onReglages: () -> Unit = {},
+    onCloturer: (Projet) -> Unit = {},
+    onDupliquer: (Projet) -> Unit = {},
 ) {
     var nouveau by remember { mutableStateOf<String?>(null) }
     var renomme by remember { mutableStateOf<Projet?>(null) }
@@ -113,7 +118,14 @@ fun EcranProjets(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(projets, key = { it.id }) { projet ->
-                    CarteProjet(projet, onOuvrir, onRenommer = { renomme = projet }, onSupprimer)
+                    CarteProjet(
+                        projet = projet,
+                        onOuvrir = onOuvrir,
+                        onRenommer = { renomme = projet },
+                        onSupprimer = onSupprimer,
+                        onCloturer = { onCloturer(projet) },
+                        onDupliquer = { onDupliquer(projet) },
+                    )
                 }
             }
         }
@@ -152,6 +164,8 @@ private fun CarteProjet(
     onOuvrir: (Projet) -> Unit,
     onRenommer: () -> Unit,
     onSupprimer: (Projet) -> Unit,
+    onCloturer: () -> Unit = {},
+    onDupliquer: () -> Unit = {},
 ) {
     var menu by remember { mutableStateOf(false) }
     Card(
@@ -166,7 +180,8 @@ private fun CarteProjet(
             Column(Modifier.weight(1f)) {
                 Text(projet.nom, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "créé le " + SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date(projet.creeLe)),
+                    if (projet.cloture) "clôturé" else
+                        "créé le " + SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date(projet.creeLe)),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -179,6 +194,16 @@ private fun CarteProjet(
                         text = { Text("Renommer") },
                         leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                         onClick = { menu = false; onRenommer() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (projet.cloture) "Réouvrir le projet" else "Clôturer le projet") },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                        onClick = { menu = false; onCloturer() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Dupliquer (sans les dépenses)") },
+                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                        onClick = { menu = false; onDupliquer() },
                     )
                     DropdownMenuItem(
                         text = { Text("Supprimer") },
@@ -206,8 +231,21 @@ fun EcranProjet(
     onIndemniteKm: () -> Unit = {},
 ) {
     var menuAjout by remember { mutableStateOf(false) }
+    var recherche by remember { mutableStateOf("") }
     val totalEur = depenses.sumOf { it.montantEurCentimes ?: 0L } / 100.0
     val nonConverties = depenses.count { it.montantEurCentimes == null }
+    val visibles = remember(depenses, recherche) {
+        if (recherche.isBlank()) depenses
+        else depenses.filter { d ->
+            d.libelle.contains(recherche, ignoreCase = true) ||
+                d.typeDepense.label.contains(recherche, ignoreCase = true) ||
+                d.date.contains(recherche) ||
+                d.trajet.contains(recherche, ignoreCase = true)
+        }
+    }
+    val parType = depenses.groupBy { it.typeDepense }
+        .mapValues { (_, liste) -> liste.sumOf { it.montantEurCentimes ?: 0L } }
+        .toList().sortedByDescending { it.second }.take(3)
 
     Scaffold(
         topBar = {
@@ -226,6 +264,7 @@ fun EcranProjet(
             )
         },
         floatingActionButton = {
+            if (projet.cloture) return@Scaffold
             Box {
                 FloatingActionButton(onClick = { menuAjout = true }) {
                     Icon(Icons.Default.Add, contentDescription = "Ajouter une dépense")
@@ -267,8 +306,33 @@ fun EcranProjet(
                             if (nonConverties > 0) " · $nonConverties sans taux de change" else "",
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    if (parType.isNotEmpty()) {
+                        Text(
+                            parType.joinToString(" · ") {
+                                "${it.first.label} " + String.format(Locale.FRANCE, "%.2f €", it.second / 100.0)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
+
+            if (projet.cloture) {
+                Text(
+                    "Projet clôturé : lecture seule. Réouvre-le pour ajouter une dépense.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+            }
+
+            OutlinedTextField(
+                value = recherche,
+                onValueChange = { recherche = it },
+                label = { Text("Rechercher (libellé, type, date, trajet)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            )
 
             if (traitement) {
                 Row(
@@ -287,7 +351,7 @@ fun EcranProjet(
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(depenses, key = { it.id }) { depense ->
+                items(visibles, key = { it.id }) { depense ->
                     LigneDepense(depense) { onOuvrirDepense(depense) }
                 }
             }
