@@ -171,9 +171,19 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 )
 
                 if (champs.complet) {
-                    val id = dao.ajouterDepense(base)
-                    _derniere.value = base.copy(id = id)
-                    _message.value = "Enregistré · ${montantLisible(base)} · ${base.typeDepense.label}"
+                    // A foreign receipt saved straight from OCR still needs its
+                    // euro equivalent: take the Banque de France parity here,
+                    // since no form was opened to ask for it.
+                    val avecTaux = if (!base.devise.equals("EUR", ignoreCase = true)) {
+                        val trouve = runCatching { tauxClient.taux(base.date, base.devise) }.getOrNull()
+                        base.copy(tauxChange = trouve?.valeur)
+                    } else {
+                        base
+                    }
+                    val id = dao.ajouterDepense(avecTaux)
+                    _derniere.value = avecTaux.copy(id = id)
+                    val devise = if (avecTaux.tauxChange == null && avecTaux.devise != "EUR") " · taux BdF absent" else ""
+                    _message.value = "Enregistré · ${montantLisible(avecTaux)} · ${avecTaux.typeDepense.label}$devise"
                 } else {
                     val manquants = buildList {
                         if (champs.date == null) add("date")
@@ -203,12 +213,20 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun validerBrouillon(depense: Depense) {
         viewModelScope.launch {
-            if (depense.id == 0L) {
-                val id = dao.ajouterDepense(depense)
-                _derniere.value = depense.copy(id = id)
+            // A rate left empty on a foreign expense is filled with the parity
+            // of the expense date rather than stored as a dead amount.
+            val finalisee = if (!depense.devise.equals("EUR", ignoreCase = true) && depense.tauxChange == null) {
+                val trouve = runCatching { tauxClient.taux(depense.date, depense.devise) }.getOrNull()
+                depense.copy(tauxChange = trouve?.valeur)
+            } else {
+                depense
+            }
+            if (finalisee.id == 0L) {
+                val id = dao.ajouterDepense(finalisee)
+                _derniere.value = finalisee.copy(id = id)
                 _message.value = "Dépense ajoutée"
             } else {
-                dao.majDepense(depense)
+                dao.majDepense(finalisee)
                 _message.value = "Dépense modifiée"
             }
             _brouillon.value = null
