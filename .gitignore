@@ -12,3 +12,7 @@ local.properties
 *.keystore
 !debug.keystore
 /keystore.properties
+app/build/
+build/
+.gradle/
+local.properties

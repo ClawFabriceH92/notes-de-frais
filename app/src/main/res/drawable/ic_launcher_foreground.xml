@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A receipt with its amount: the app in one picture. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- paper -->
+    <path
+        android:fillColor="#FFFBF5"
+        android:pathData="M38,22 L70,22 Q74,22 74,26 L74,82 Q74,86 70,86 L38,86 Q34,86 34,82 L34,26 Q34,22 38,22 Z" />
+
+    <!-- torn bottom edge -->
+    <path
+        android:fillColor="#F4EFE6"
+        android:pathData="M34,78 L40,82 L46,78 L52,82 L58,78 L64,82 L70,78 L74,81 L74,82 Q74,86 70,86 L38,86 Q34,86 34,82 z" />
+
+    <!-- text lines -->
+    <path
+        android:fillColor="#9AA5A0"
+        android:pathData="M42,32 h20 v3 h-20 z" />
+    <path
+        android:fillColor="#9AA5A0"
+        android:pathData="M42,40 h28 v2.5 h-28 z" />
+    <path
+        android:fillColor="#9AA5A0"
+        android:pathData="M42,47 h16 v2.5 h-16 z" />
+
+    <!-- euro sign -->
+    <path
+        android:strokeColor="#1B6B4A"
+        android:strokeWidth="3.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M62,60 A8,8 0 1 0 62,74" />
+    <path
+        android:strokeColor="#1B6B4A"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:pathData="M47,64 h12" />
+    <path
+        android:strokeColor="#1B6B4A"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:pathData="M47,70 h12" />
+</vector>
