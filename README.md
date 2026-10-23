@@ -74,9 +74,11 @@ Secrets CI : `NOTESDEFRAIS_KEYSTORE_B64`, `NOTESDEFRAIS_KEYSTORE_PASSWORD`,
 
 ## Tests
 
-29 tests unitaires JVM : lecture des tickets (12 formats), générateur xlsx
+60 tests unitaires JVM : lecture des tickets (12 formats), générateur xlsx
 (vérifié en dézippant le classeur), nommage des PDF, conversion de devises,
-ventilation TVA, comparaison de versions et lecture du manifeste de MAJ.
+ventilation TVA, barème kilométrique 2026 (exemples officiels de
+l'administration), plafonds d'exonération URSSAF 2026, détection de doublons,
+comparaison de versions et lecture du manifeste de MAJ.
 
 ## Technique
 
