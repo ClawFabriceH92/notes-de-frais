@@ -218,13 +218,19 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 enregistrerParametresSilencieux(p.copy(moyensPaiement = complete, moyensPaiementV2 = true))
             }
             val aJour = _parametres.value
-            if (aJour.paiementRempliAuto || aJour.moyenPaiementDefaut.isBlank()) return@launch
-            val touchees = runCatching { dao.remplirMoyenPaiement(aJour.moyenPaiementDefaut) }
+            // La pièce jointe en premier devient le comportement par défaut :
+            // appliqué une fois aux réglages déjà enregistrés.
+            if (!aJour.pieceEnGrandV2) {
+                enregistrerParametresSilencieux(aJour.copy(pieceEnGrand = true, pieceEnGrandV2 = true))
+            }
+            val regle = _parametres.value
+            if (regle.paiementRempliAuto || regle.moyenPaiementDefaut.isBlank()) return@launch
+            val touchees = runCatching { dao.remplirMoyenPaiement(regle.moyenPaiementDefaut) }
                 .onFailure { Diag.record("paiement/pre-remplissage", it) }
                 .getOrDefault(0)
-            enregistrerParametresSilencieux(aJour.copy(paiementRempliAuto = true))
+            enregistrerParametresSilencieux(regle.copy(paiementRempliAuto = true))
             if (touchees > 0) {
-                _message.value = "$touchees dépense(s) existante(s) marquées « ${aJour.moyenPaiementDefaut} »"
+                _message.value = "$touchees dépense(s) existante(s) marquées « ${regle.moyenPaiementDefaut} »"
             }
         }
     }

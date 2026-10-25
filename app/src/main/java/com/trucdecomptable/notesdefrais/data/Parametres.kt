@@ -37,7 +37,9 @@ data class Parametres(
     /** Set once the expenses recorded before the feature got the default card. */
     val paiementRempliAuto: Boolean = false,
     /** Open the attachment full screen as soon as an expense is opened. */
-    val pieceEnGrand: Boolean = false,
+    val pieceEnGrand: Boolean = true,
+    /** Set once the attachment-first default was pushed to an existing install. */
+    val pieceEnGrandV2: Boolean = false,
     /** Société (profil) sur laquelle on travaille : ses projets, ses exports. */
     val profilCourant: Long = 0,
     /** Set once the "payé par un tiers" default was merged into an old list. */
@@ -80,6 +82,7 @@ data class Parametres(
         put("moyenPaiementDefaut", moyenPaiementDefaut)
         put("paiementRempliAuto", paiementRempliAuto)
         put("pieceEnGrand", pieceEnGrand)
+        put("pieceEnGrandV2", pieceEnGrandV2)
         put("profilCourant", profilCourant)
         put("moyensPaiementV2", moyensPaiementV2)
     }
@@ -111,7 +114,8 @@ data class Parametres(
             } ?: MOYENS_PAIEMENT_DEFAUT,
             moyenPaiementDefaut = json.optString("moyenPaiementDefaut", MOYENS_PAIEMENT_DEFAUT.first()),
             paiementRempliAuto = json.optBoolean("paiementRempliAuto", false),
-            pieceEnGrand = json.optBoolean("pieceEnGrand", false),
+            pieceEnGrand = json.optBoolean("pieceEnGrand", true),
+            pieceEnGrandV2 = json.optBoolean("pieceEnGrandV2", false),
             profilCourant = json.optLong("profilCourant", 0L),
             moyensPaiementV2 = json.optBoolean("moyensPaiementV2", false),
         )

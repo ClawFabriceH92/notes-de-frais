@@ -113,6 +113,7 @@ fun EcranReglages(
         // Already done: saving the settings must not trigger it a second time.
         paiementRempliAuto = initial.paiementRempliAuto,
         pieceEnGrand = pieceEnGrand,
+        pieceEnGrandV2 = initial.pieceEnGrandV2,
         profilCourant = initial.profilCourant,
         moyensPaiementV2 = initial.moyensPaiementV2,
     )
@@ -134,37 +135,13 @@ fun EcranReglages(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text("Titulaire", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Le titulaire est salarié : sa société, son SIRET et son adresse se règlent " +
+                    "dans la section « Sociétés (profils) » ci-dessous.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             OutlinedTextField(prenom, { prenom = it }, label = { Text("Prénom") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(nom, { nom = it }, label = { Text("Nom") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(societe, { societe = it }, label = { Text("Société") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(adresse, { adresse = it }, label = { Text("Adresse") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(siret, { siret = it }, label = { Text("SIRET") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            val porteeSiret = androidx.compose.runtime.rememberCoroutineScope()
-            var etatSiret by remember { mutableStateOf<String?>(null) }
-            var chercheSiret by remember { mutableStateOf(false) }
-            OutlinedButton(
-                enabled = !chercheSiret && siret.length >= 9,
-                onClick = {
-                    chercheSiret = true
-                    porteeSiret.launch {
-                        val info = chercherSiret(siret)
-                        if (info == null) {
-                            etatSiret = "Aucune entreprise trouvée pour ce SIRET"
-                        } else {
-                            // Le nom et l'adresse viennent de l'annuaire : plus
-                            // de faute de recopie sur les exports.
-                            societe = info.nom
-                            if (info.adresse.isNotBlank()) adresse = info.adresse
-                            etatSiret = "Annuaire : ${info.nom}"
-                        }
-                        chercheSiret = false
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (chercheSiret) "Recherche…" else "Remplir société et adresse depuis le SIRET")
-            }
-            etatSiret?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             OutlinedTextField(
                 email,
                 { email = it },
@@ -271,10 +248,14 @@ fun EcranReglages(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Pièces jointes", style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(checked = pieceEnGrand, onCheckedChange = { pieceEnGrand = it })
                 Text(
-                    "  Ouvrir la pièce jointe en grand dès l'ouverture d'une dépense",
+                    "  Ouvrir le justificatif en grand dès qu'on touche une dépense " +
+                        "(le formulaire s'ouvre à la fermeture)",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
