@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.trucdecomptable.notesdefrais.data.BaremeKm
 import com.trucdecomptable.notesdefrais.data.Parametres
 import com.trucdecomptable.notesdefrais.util.centimesDe
+import com.trucdecomptable.notesdefrais.util.Dates
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.Locale
@@ -46,7 +47,7 @@ fun DialogueIndemniteKm(
     onAnnuler: () -> Unit,
     onValider: (date: String, distanceKm: Int, trajet: String, fraisCentimes: Long, libelle: String) -> Unit,
 ) {
-    var date by remember { mutableStateOf(LocalDate.now().toString()) }
+    var date by remember { mutableStateOf(Dates.aujourdhuiFr()) }
     var trajet by remember { mutableStateOf("") }
     var distance by remember { mutableStateOf("") }
     var frais by remember { mutableStateOf("") }
@@ -63,7 +64,7 @@ fun DialogueIndemniteKm(
         electrique = parametres.electrique,
     )
     val total = indemnite + fraisCentimes
-    val valide = distanceKm > 0 && date.isNotBlank()
+    val valide = distanceKm > 0 && Dates.estValide(date)
 
     AlertDialog(
         onDismissRequest = onAnnuler,
@@ -74,7 +75,7 @@ fun DialogueIndemniteKm(
                     OutlinedTextField(
                         value = date,
                         onValueChange = { date = it },
-                        label = { Text("Date (AAAA-MM-JJ)") },
+                        label = { Text("Date (jj/mm/aaaa)") },
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
@@ -145,7 +146,7 @@ fun DialogueIndemniteKm(
         confirmButton = {
             TextButton(
                 enabled = valide,
-                onClick = { onValider(date.trim(), distanceKm, trajet.trim(), fraisCentimes, libelle.trim()) },
+                onClick = { onValider(Dates.frVersIso(date) ?: date.trim(), distanceKm, trajet.trim(), fraisCentimes, libelle.trim()) },
             ) { Text("Enregistrer") }
         },
         dismissButton = { TextButton(onClick = onAnnuler) { Text("Annuler") } },
@@ -154,7 +155,7 @@ fun DialogueIndemniteKm(
     if (choixDate) {
         val etat = rememberDatePickerState(
             initialSelectedDateMillis = runCatching {
-                LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+                LocalDate.parse(Dates.frVersIso(date).orEmpty()).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
             }.getOrNull(),
         )
         DatePickerDialog(
@@ -162,7 +163,7 @@ fun DialogueIndemniteKm(
             confirmButton = {
                 TextButton(onClick = {
                     etat.selectedDateMillis?.let { millis ->
-                        date = java.time.Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
+                        date = Dates.isoVersFr(java.time.Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
                     }
                     choixDate = false
                 }) { Text("OK") }

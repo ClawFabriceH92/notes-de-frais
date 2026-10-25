@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.trucdecomptable.notesdefrais.backup.Sauvegarde
+import com.trucdecomptable.notesdefrais.data.AnnuaireEntreprises
 import com.trucdecomptable.notesdefrais.data.BaremeKm
 import com.trucdecomptable.notesdefrais.data.Depense
 import com.trucdecomptable.notesdefrais.data.Doublons
@@ -12,6 +13,7 @@ import com.trucdecomptable.notesdefrais.data.NotesDb
 import com.trucdecomptable.notesdefrais.data.Parametres
 import com.trucdecomptable.notesdefrais.data.ParametresStore
 import com.trucdecomptable.notesdefrais.data.Plafonds
+import com.trucdecomptable.notesdefrais.data.Profil
 import com.trucdecomptable.notesdefrais.data.Projet
 import com.trucdecomptable.notesdefrais.data.TauxBdf
 import com.trucdecomptable.notesdefrais.data.TauxBdfClient
@@ -43,11 +45,56 @@ import java.time.LocalDate
 class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val dao = NotesDb.get(application).dao()
+    private val profilsDao = NotesDb.get(application).profilsDao()
     private val tauxClient = TauxBdfClient(application)
     private val parametresStore = ParametresStore(application)
 
     private val _parametres = MutableStateFlow(parametresStore.lire())
     val parametres: StateFlow<Parametres> = _parametres.asStateFlow()
+
+    // ------------------------------------------------------------------ profils
+
+    val profils: StateFlow<List<Profil>> = profilsDao.profils()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Société sur laquelle on travaille : ses projets, son export. */
+    private val _profilCourant = MutableStateFlow(parametresStore.lire().profilCourant)
+    val profilCourant: StateFlow<Long> = _profilCourant.asStateFlow()
+
+    fun choisirProfil(id: Long) {
+        _profilCourant.value = id
+        enregistrerParametresSilencieux(_parametres.value.copy(profilCourant = id))
+        _projet.value = null
+    }
+
+    fun ajouterProfil(profil: Profil) {
+        viewModelScope.launch {
+            val id = profilsDao.ajouter(profil)
+            if (_profilCourant.value == 0L) choisirProfil(id)
+            _message.value = "Société ajoutée"
+        }
+    }
+
+    fun majProfil(profil: Profil) {
+        viewModelScope.launch {
+            profilsDao.maj(profil)
+            _message.value = "Société enregistrée"
+        }
+    }
+
+    /** Supprimer une société ne perd pas ses projets : ils repassent en « sans société ». */
+    fun supprimerProfil(profil: Profil) {
+        viewModelScope.launch {
+            profilsDao.transfererProjets(profil.id, 0)
+            profilsDao.supprimer(profil.id)
+            if (_profilCourant.value == profil.id) choisirProfil(0)
+            _message.value = "Société supprimée, ses projets sont conservés"
+        }
+    }
+
+    /** SIRET -> raison sociale et adresse du siège (API publique de l'État). */
+    suspend fun chercherSiret(siret: String): AnnuaireEntreprises.Info? =
+        AnnuaireEntreprises.chercher(siret)
 
     fun enregistrerParametres(nouveaux: Parametres) {
         parametresStore.ecrire(nouveaux)
@@ -111,13 +158,19 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         // default card, once: the flag stops a later choice from being undone.
         viewModelScope.launch {
             val p = _parametres.value
-            if (p.paiementRempliAuto || p.moyenPaiementDefaut.isBlank()) return@launch
-            val touchees = runCatching { dao.remplirMoyenPaiement(p.moyenPaiementDefaut) }
+            if (!p.moyensPaiementV2) {
+                // « Payé par un tiers » s'ajoute aux listes déjà enregistrées.
+                val complete = (p.moyensPaiement + MOYEN_TIERS).distinct()
+                enregistrerParametresSilencieux(p.copy(moyensPaiement = complete, moyensPaiementV2 = true))
+            }
+            val aJour = _parametres.value
+            if (aJour.paiementRempliAuto || aJour.moyenPaiementDefaut.isBlank()) return@launch
+            val touchees = runCatching { dao.remplirMoyenPaiement(aJour.moyenPaiementDefaut) }
                 .onFailure { Diag.record("paiement/pre-remplissage", it) }
                 .getOrDefault(0)
-            enregistrerParametresSilencieux(p.copy(paiementRempliAuto = true))
+            enregistrerParametresSilencieux(aJour.copy(paiementRempliAuto = true))
             if (touchees > 0) {
-                _message.value = "$touchees dépense(s) existante(s) marquées « ${p.moyenPaiementDefaut} »"
+                _message.value = "$touchees dépense(s) existante(s) marquées « ${aJour.moyenPaiementDefaut} »"
             }
         }
     }
@@ -136,7 +189,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    val projets: StateFlow<List<Projet>> = dao.projets()
+    val projets: StateFlow<List<Projet>> = _profilCourant
+        .flatMapLatest { id -> dao.projetsDuProfil(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _projet = MutableStateFlow<Projet?>(null)
@@ -170,6 +224,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _sauvegarde = MutableStateFlow<File?>(null)
     val sauvegarde: StateFlow<File?> = _sauvegarde.asStateFlow()
+
+    /** Destinataire du prochain partage : celui du profil, sinon celui du paramétrage. */
+    private val _emailExport = MutableStateFlow<String?>(null)
+    val emailExport: StateFlow<String?> = _emailExport.asStateFlow()
 
     // ------------------------------------------------------------------ indemnité km
 
@@ -236,8 +294,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun creerProjet(nom: String) {
         val propre = nom.trim()
         if (propre.isEmpty()) return
+        val profil = _profilCourant.value
         viewModelScope.launch {
-            val id = dao.ajouterProjet(Projet(nom = propre))
+            val id = dao.ajouterProjet(Projet(nom = propre, profilId = profil))
             _projet.value = dao.projet(id)
             traiterPartagesEnAttente()
         }
@@ -274,9 +333,43 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     /** Duplicates the project's name and settings, without its expenses. */
     fun dupliquerProjet(projet: Projet) {
         viewModelScope.launch {
-            val id = dao.ajouterProjet(Projet(nom = "${projet.nom} (copie)"))
+            val id = dao.ajouterProjet(
+                Projet(nom = "${projet.nom} (copie)", profilId = projet.profilId),
+            )
             _projet.value = dao.projet(id)
             _message.value = "Projet dupliqué"
+        }
+    }
+
+    /**
+     * Recadrage : la nouvelle image devient la pièce principale, l'ancienne
+     * passe en annexe. Rien n'est écrasé, donc un recadrage raté se rattrape.
+     */
+    fun recadrerPiece(depense: Depense, nom: String, bitmap: android.graphics.Bitmap) {
+        viewModelScope.launch {
+            runCatching {
+                val fichier = withContext(Dispatchers.IO) {
+                    val enregistre = enregistrerBitmap(getApplication(), bitmap)
+                    enregistre.name
+                }
+                val maj = if (depense.fichier == nom) {
+                    val annexes = (depense.fichiersSupplementaires.split('|').map { it.trim() }
+                        .filter { it.isNotBlank() } + nom).joinToString("|")
+                    depense.copy(fichier = fichier, fichiersSupplementaires = annexes)
+                } else {
+                    val annexes = depense.fichiersSupplementaires.split('|').map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .map { if (it == nom) fichier else it }
+                        .joinToString("|")
+                    depense.copy(fichiersSupplementaires = annexes)
+                }
+                dao.majDepense(maj)
+                _edition.value = maj
+                _message.value = "Pièce recadrée"
+            }.onFailure {
+                Diag.record("recadrage", it)
+                _message.value = "Recadrage impossible : ${it.message ?: "erreur"}"
+            }
         }
     }
 
@@ -500,7 +593,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     _message.value = "Aucune dépense à exporter"
                     return@launch
                 }
-                val fichier = ExportManager.exporter(getApplication(), projet, liste, _parametres.value)
+                // Le profil du projet porte la société, le SIRET et le destinataire.
+                val profil = projet.profilId.takeIf { it > 0L }?.let { profilsDao.profil(it) }
+                val fichier = ExportManager.exporter(
+                    getApplication(), projet, liste, _parametres.value, profil,
+                )
+                _emailExport.value = profil?.emailDestinataire?.takeIf { it.isNotBlank() }
+                    ?: _parametres.value.emailDestinataire
                 _export.value = fichier
                 _message.value = "ZIP prêt : ${liste.size} justificatif(s)"
             } catch (e: Exception) {
@@ -525,6 +624,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
+        /** Le moyen de paiement qui manquait dans les listes déjà enregistrées. */
+        const val MOYEN_TIERS = "Payé par un tiers"
+
         fun montantLisible(depense: Depense): String {
             val montant = depense.montantCentimes / 100.0
             val nombre = String.format(java.util.Locale.FRANCE, "%.2f", montant)

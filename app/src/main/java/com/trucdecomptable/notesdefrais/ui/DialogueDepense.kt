@@ -38,8 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.trucdecomptable.notesdefrais.data.Depense
+import com.trucdecomptable.notesdefrais.data.SensTrajet
 import com.trucdecomptable.notesdefrais.data.TauxBdf
 import com.trucdecomptable.notesdefrais.data.TypeDepense
+import com.trucdecomptable.notesdefrais.util.Dates
 import com.trucdecomptable.notesdefrais.util.centimesDe
 import com.trucdecomptable.notesdefrais.util.centimesVersTexte
 import com.trucdecomptable.notesdefrais.util.pariteTexte
@@ -66,8 +68,9 @@ fun DialogueDepense(
     tauxPour: (String, String) -> TauxBdf.Taux? = { _, _ -> null },
     onAjouterPiece: ((android.net.Uri) -> Unit)? = null,
     moyensPaiement: List<String> = emptyList(),
+    onRecadrerPiece: ((String, android.graphics.Bitmap) -> Unit)? = null,
 ) {
-    var date by remember { mutableStateOf(initiale.date) }
+    var date by remember { mutableStateOf(Dates.isoVersFr(initiale.date)) }
     var montant by remember { mutableStateOf(if (initiale.montantCentimes > 0) centimesVersTexte(initiale.montantCentimes) else "") }
     var devise by remember { mutableStateOf(initiale.devise) }
     var taux by remember { mutableStateOf(initiale.tauxChange?.toString().orEmpty()) }
@@ -78,6 +81,10 @@ fun DialogueDepense(
     var choixDate by remember { mutableStateOf(false) }
     var refacturable by remember { mutableStateOf(initiale.refacturable) }
     var paiement by remember { mutableStateOf(initiale.moyenPaiement) }
+    var sens by remember { mutableStateOf(initiale.sensTrajet) }
+    var participants by remember { mutableStateOf(initiale.participants) }
+    var societeParticipant by remember { mutableStateOf(initiale.societeParticipant) }
+    var motifRepas by remember { mutableStateOf(initiale.motifRepas) }
     var tauxBdf by remember { mutableStateOf<TauxBdf.Taux?>(null) }
     var apercu by remember { mutableStateOf<String?>(null) }
 
@@ -93,13 +100,16 @@ fun DialogueDepense(
             taux = ""
             return@LaunchedEffect
         }
-        val trouve = tauxPour(date.trim(), devise)
+        val trouve = tauxPour(Dates.frVersIso(date) ?: date, devise)
         tauxBdf = trouve
         if (trouve != null && taux.isBlank()) taux = pariteTexte(trouve.valeur)
     }
 
     val montantCentimes = centimesDe(montant)
-    val valide = date.isNotBlank() && montantCentimes != null && montantCentimes > 0L
+    val valide = Dates.estValide(date) && montantCentimes != null && montantCentimes > 0L
+    // Le type courant décide des questions à poser (trajet, invités) ; il sert
+    // aussi au bouton Enregistrer, donc il vit hors du contenu du dialogue.
+    val typeCourant = initiale.copy(type = type.name)
 
     AlertDialog(
         onDismissRequest = onAnnuler,
@@ -113,8 +123,10 @@ fun DialogueDepense(
                     OutlinedTextField(
                         value = date,
                         onValueChange = { date = it },
-                        label = { Text("Date (AAAA-MM-JJ)") },
+                        label = { Text("Date (jj/mm/aaaa)") },
+                        placeholder = { Text("12/10/2026") },
                         singleLine = true,
+                        isError = date.isNotBlank() && !Dates.estValide(date),
                         modifier = Modifier.weight(1f),
                     )
                     IconButton(onClick = { choixDate = true }) {
@@ -182,6 +194,45 @@ fun DialogueDepense(
                             label = { Text(t.label) },
                         )
                     }
+                }
+
+                // Train et avion : un aller ou un aller-retour ? La question
+                // n'apparaît que pour ces deux types.
+                if (typeCourant.trajetDemande) {
+                    Text("Trajet", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SensTrajet.entries.forEach { option ->
+                            FilterChip(
+                                selected = sens == option.name,
+                                onClick = { sens = if (sens == option.name) "" else option.name },
+                                label = { Text(option.label) },
+                            )
+                        }
+                    }
+                }
+
+                // Repas : la déductibilité tient à ces trois informations.
+                if (typeCourant.repasDemande) {
+                    Text("Invités et motif", style = MaterialTheme.typography.labelLarge)
+                    OutlinedTextField(
+                        value = participants,
+                        onValueChange = { participants = it },
+                        label = { Text("Nom et prénom des invités") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = societeParticipant,
+                        onValueChange = { societeParticipant = it },
+                        label = { Text("Société des invités") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = motifRepas,
+                        onValueChange = { motifRepas = it },
+                        label = { Text("Motif du repas") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
 
                 // Which card paid: several CBs, cash, a transfer. The labels come
@@ -285,7 +336,7 @@ fun DialogueDepense(
                 onClick = {
                     onValider(
                         initiale.copy(
-                            date = date.trim(),
+                            date = Dates.frVersIso(date) ?: initiale.date,
                             montantCentimes = montantCentimes ?: 0L,
                             devise = devise,
                             tauxChange = if (devise == "EUR") null else taux.replace(',', '.').toDoubleOrNull(),
@@ -294,6 +345,10 @@ fun DialogueDepense(
                             tvaTauxBp = if (ventiler) tauxTva else null,
                             refacturable = refacturable,
                             moyenPaiement = paiement.trim(),
+                            sensTrajet = if (typeCourant.trajetDemande) sens else "",
+                            participants = if (typeCourant.repasDemande) participants.trim() else "",
+                            societeParticipant = if (typeCourant.repasDemande) societeParticipant.trim() else "",
+                            motifRepas = if (typeCourant.repasDemande) motifRepas.trim() else "",
                         ),
                     )
                 },
@@ -309,12 +364,19 @@ fun DialogueDepense(
         },
     )
 
-    apercu?.let { nom -> ApercuPiece(nom) { apercu = null } }
+    apercu?.let { nom ->
+        ApercuPiece(
+            nom = nom,
+            onFermer = { apercu = null },
+            onRecadrer = { piece, bitmap -> onRecadrerPiece?.invoke(piece, bitmap) },
+        )
+    }
 
     if (choixDate) {
         val etat = rememberDatePickerState(
             initialSelectedDateMillis = runCatching {
-                LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+                LocalDate.parse(Dates.frVersIso(date).orEmpty())
+                    .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
             }.getOrNull(),
         )
         DatePickerDialog(
@@ -322,7 +384,9 @@ fun DialogueDepense(
             confirmButton = {
                 TextButton(onClick = {
                     etat.selectedDateMillis?.let { millis ->
-                        date = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
+                        date = Dates.isoVersFr(
+                            Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString(),
+                        )
                     }
                     choixDate = false
                 }) { Text("OK") }

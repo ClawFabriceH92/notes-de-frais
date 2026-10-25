@@ -3,6 +3,8 @@ package com.trucdecomptable.notesdefrais.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,7 +53,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.trucdecomptable.notesdefrais.data.Depense
+import com.trucdecomptable.notesdefrais.data.Profil
 import com.trucdecomptable.notesdefrais.data.Projet
+import com.trucdecomptable.notesdefrais.util.Dates
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -67,6 +72,9 @@ fun EcranProjets(
     onReglages: () -> Unit = {},
     onCloturer: (Projet) -> Unit = {},
     onDupliquer: (Projet) -> Unit = {},
+    profils: List<Profil> = emptyList(),
+    profilCourant: Long = 0,
+    onChoisirProfil: (Long) -> Unit = {},
 ) {
     var nouveau by remember { mutableStateOf<String?>(null) }
     var renomme by remember { mutableStateOf<Projet?>(null) }
@@ -91,41 +99,53 @@ fun EcranProjets(
             }
         },
     ) { padding ->
-        if (projets.isEmpty()) {
-            Box(
-                Modifier.fillMaxSize().padding(padding).padding(32.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Folder,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text("Aucun projet", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Crée un projet, photographie tes justificatifs, exporte le ZIP.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            // Deux sociétés = deux jeux de projets : les puces choisissent la
+            // société en cours, et « Toutes » remet la vue d'ensemble.
+            if (profils.isNotEmpty()) {
+                FlowRowAccueil(
+                    profils = profils,
+                    courant = profilCourant,
+                    onChoisir = onChoisirProfil,
+                )
             }
-        } else {
-            LazyColumn(
-                Modifier.fillMaxSize().padding(padding),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(projets, key = { it.id }) { projet ->
-                    CarteProjet(
-                        projet = projet,
-                        onOuvrir = onOuvrir,
-                        onRenommer = { renomme = projet },
-                        onSupprimer = onSupprimer,
-                        onCloturer = { onCloturer(projet) },
-                        onDupliquer = { onDupliquer(projet) },
-                    )
+            if (projets.isEmpty()) {
+                Box(
+                    Modifier.fillMaxSize().padding(32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text("Aucun projet", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Crée un projet, photographie tes justificatifs, exporte le ZIP.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(projets, key = { it.id }) { projet ->
+                        CarteProjet(
+                            projet = projet,
+                            societe = profils.firstOrNull { it.id == projet.profilId }?.nom,
+                            onOuvrir = onOuvrir,
+                            onRenommer = { renomme = projet },
+                            onSupprimer = onSupprimer,
+                            onCloturer = { onCloturer(projet) },
+                            onDupliquer = { onDupliquer(projet) },
+                        )
+                    }
                 }
             }
         }
@@ -158,9 +178,36 @@ fun EcranProjets(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FlowRowAccueil(
+    profils: List<Profil>,
+    courant: Long,
+    onChoisir: (Long) -> Unit,
+) {
+    FlowRow(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            selected = courant == 0L,
+            onClick = { onChoisir(0) },
+            label = { Text("Toutes les sociétés") },
+        )
+        profils.forEach { profil ->
+            FilterChip(
+                selected = courant == profil.id,
+                onClick = { onChoisir(profil.id) },
+                label = { Text(profil.nom) },
+            )
+        }
+    }
+}
+
 @Composable
 private fun CarteProjet(
     projet: Projet,
+    societe: String? = null,
     onOuvrir: (Projet) -> Unit,
     onRenommer: () -> Unit,
     onSupprimer: (Projet) -> Unit,
@@ -180,8 +227,11 @@ private fun CarteProjet(
             Column(Modifier.weight(1f)) {
                 Text(projet.nom, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (projet.cloture) "clôturé" else
-                        "créé le " + SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date(projet.creeLe)),
+                    buildString {
+                        if (projet.cloture) append("clôturé") else
+                            append("créé le " + SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date(projet.creeLe)))
+                        if (!societe.isNullOrBlank()) append(" · ").append(societe)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -229,6 +279,7 @@ fun EcranProjet(
     onExport: () -> Unit,
     onOuvrirDepense: (Depense) -> Unit,
     onIndemniteKm: () -> Unit = {},
+    onRecadrerPiece: (Depense, String, android.graphics.Bitmap) -> Unit = { _, _, _ -> },
 ) {
     var menuAjout by remember { mutableStateOf(false) }
     var recherche by remember { mutableStateOf("") }
@@ -240,6 +291,9 @@ fun EcranProjet(
             d.libelle.contains(recherche, ignoreCase = true) ||
                 d.typeDepense.label.contains(recherche, ignoreCase = true) ||
                 d.moyenPaiement.contains(recherche, ignoreCase = true) ||
+                d.participants.contains(recherche, ignoreCase = true) ||
+                d.societeParticipant.contains(recherche, ignoreCase = true) ||
+                Dates.affichage(d.date).contains(recherche) ||
                 d.date.contains(recherche) ||
                 d.trajet.contains(recherche, ignoreCase = true)
         }
@@ -353,7 +407,11 @@ fun EcranProjet(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(visibles, key = { it.id }) { depense ->
-                    LigneDepense(depense) { onOuvrirDepense(depense) }
+                    LigneDepense(
+                        depense = depense,
+                        onClick = { onOuvrirDepense(depense) },
+                        onRecadrer = onRecadrerPiece,
+                    )
                 }
             }
         }
@@ -361,7 +419,11 @@ fun EcranProjet(
 }
 
 @Composable
-private fun LigneDepense(depense: Depense, onClick: () -> Unit) {
+private fun LigneDepense(
+    depense: Depense,
+    onClick: () -> Unit,
+    onRecadrer: (Depense, String, android.graphics.Bitmap) -> Unit = { _, _, _ -> },
+) {
     var apercu by remember { mutableStateOf<String?>(null) }
     Card(
         onClick = onClick,
@@ -383,14 +445,19 @@ private fun LigneDepense(depense: Depense, onClick: () -> Unit) {
                 Text(depense.typeDepense.label, style = MaterialTheme.typography.titleSmall)
                 Text(
                     buildString {
-                        append(depense.date)
+                        append(Dates.affichage(depense.date))
                         if (depense.libelle.isNotBlank()) append(" · ").append(depense.libelle)
+                        depense.sens?.let { append(" · ").append(it.label) }
                     },
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                 )
-                if (depense.moyenPaiement.isNotBlank()) {
-                    Text(depense.moyenPaiement, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                val details = listOfNotNull(
+                    depense.moyenPaiement.takeIf { it.isNotBlank() },
+                    depense.participants.takeIf { it.isNotBlank() },
+                ).joinToString(" · ")
+                if (details.isNotBlank()) {
+                    Text(details, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
@@ -409,7 +476,13 @@ private fun LigneDepense(depense: Depense, onClick: () -> Unit) {
             }
         }
     }
-    apercu?.let { nom -> ApercuPiece(nom) { apercu = null } }
+    apercu?.let { nom ->
+        ApercuPiece(
+            nom = nom,
+            onFermer = { apercu = null },
+            onRecadrer = { piece, bitmap -> onRecadrer(depense, piece, bitmap) },
+        )
+    }
 }
 
 @Composable

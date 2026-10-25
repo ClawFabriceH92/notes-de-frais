@@ -36,6 +36,12 @@ data class Parametres(
     val moyenPaiementDefaut: String = MOYENS_PAIEMENT_DEFAUT.first(),
     /** Set once the expenses recorded before the feature got the default card. */
     val paiementRempliAuto: Boolean = false,
+    /** Open the attachment full screen as soon as an expense is opened. */
+    val pieceEnGrand: Boolean = false,
+    /** Société (profil) sur laquelle on travaille : ses projets, ses exports. */
+    val profilCourant: Long = 0,
+    /** Set once the "payé par un tiers" default was merged into an old list. */
+    val moyensPaiementV2: Boolean = false,
 ) {
     val verrouillageActif: Boolean get() = codeAccesHash.isNotBlank()
 
@@ -73,11 +79,14 @@ data class Parametres(
         put("moyensPaiement", JSONArray(moyensPaiement))
         put("moyenPaiementDefaut", moyenPaiementDefaut)
         put("paiementRempliAuto", paiementRempliAuto)
+        put("pieceEnGrand", pieceEnGrand)
+        put("profilCourant", profilCourant)
+        put("moyensPaiementV2", moyensPaiementV2)
     }
 
     companion object {
         /** Enough to be usable on the first launch; renamed in the settings. */
-        val MOYENS_PAIEMENT_DEFAUT = listOf("CB", "Espèces")
+        val MOYENS_PAIEMENT_DEFAUT = listOf("CB", "Espèces", "Payé par un tiers")
 
         fun depuisJson(json: JSONObject): Parametres = Parametres(
             nom = json.optString("nom", ""),
@@ -102,6 +111,9 @@ data class Parametres(
             } ?: MOYENS_PAIEMENT_DEFAUT,
             moyenPaiementDefaut = json.optString("moyenPaiementDefaut", MOYENS_PAIEMENT_DEFAUT.first()),
             paiementRempliAuto = json.optBoolean("paiementRempliAuto", false),
+            pieceEnGrand = json.optBoolean("pieceEnGrand", false),
+            profilCourant = json.optLong("profilCourant", 0L),
+            moyensPaiementV2 = json.optBoolean("moyensPaiementV2", false),
         )
     }
 }

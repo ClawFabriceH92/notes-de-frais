@@ -18,10 +18,21 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
 - **Enregistrement direct** quand la date et le montant sont trouvés ; sinon le
   formulaire s'ouvre avec ce qui a été lu, et les champs manquants en clair.
 - **Types** : avion, hôtel, train, taxi, restaurant midi, restaurant soir, autres.
+- **Train et avion** : un aller simple ou un aller-retour, à cocher sur la dépense.
+- **Repas** : nom et prénom des invités, leur société, motif du repas, pour que la
+  dépense reste justifiée sur le plan fiscal.
+- **Dates** : saisies et affichées en `jj/mm/aaaa` (le 12/10/2026 s'écrit aussi
+  12-10-2026 ou 12/10/26), stockées en ISO pour le tri et les noms de fichiers.
 - **Mode de paiement** par dépense : les cartes et autres moyens sont nommés
-  dans le paramétrage (plusieurs CB, espèces, virement…), un moyen par défaut
-  est proposé sur chaque nouvelle dépense, et le total par moyen apparaît dans
-  la synthèse de l'export.
+  dans le paramétrage (plusieurs CB, espèces, virement, **payé par un tiers**), un
+  moyen par défaut est proposé sur chaque nouvelle dépense, et le total par moyen
+  apparaît dans la synthèse de l'export.
+- **Profils de société** : une société par jeu de projets (deux cabinets, deux
+  SARL…). L'écran Projets filtre sur la société choisie, l'export reprend son nom,
+  son SIRET, son adresse et son destinataire. Supprimer une société ne perd pas
+  ses projets : ils repassent en « sans société ».
+- **SIRET** : vérifié par sa clé, puis l'annuaire des entreprises
+  (recherche-entreprises.api.gouv.fr) remplit la raison sociale et l'adresse.
 - **Devises** : EUR, USD, GBP, CHF avec le taux de la **Banque de France**
   (série BCE), récupéré depuis https://trucdecomptable.fr/taux-devises-bdf.json
   à la **date de la dépense** (repli sur la dernière parité publiée, week-end
@@ -34,17 +45,24 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   barème fiscal 2026 (voiture, moto, cyclomoteur ; électrique majoré de 20 %),
   péages et stationnement en supplément, et une **feuille de route PDF** est
   générée comme justificatif.
-- **Pièces jointes visibles** : vignette de la photo dans la liste des dépenses
-  et dans la fiche de la dépense, plein écran au toucher, bouton « Ouvrir avec… »
-  pour les PDF, et pièces multiples par dépense.
+- **Pièces jointes visibles** : vignette dans la liste des dépenses, **PDF
+  rendus page par page** (PdfRenderer, sans dépendance) comme les photos, plein
+  écran au toucher avec **zoom au pincement ou par boutons**, page suivante pour
+  un PDF, bouton « Ouvrir avec… », et pièces multiples par dépense.
+- **Recadrage** d'une photo dans la visionneuse : quatre coins à glisser,
+  rotation par pas de 90°, la version recadrée devient la pièce principale et
+  l'originale est conservée en annexe.
+- **Option** : ouvrir la pièce jointe en grand dès qu'on touche une dépense,
+  avant le formulaire (paramétrage).
 - **Sauvegarde et restauration** : archive complète (base, justificatifs,
   paramétrage), créée à la demande et **automatiquement avant chaque mise à
   jour**, partageable par mail ou vers Drive.
 - **Export ZIP par projet** :
-  - `recap.xlsx` : feuille « Dépenses » (détail + total, une colonne « N° » qui
-    numérote les justificatifs dans l'ordre du ZIP, une colonne « Paiement » et
-    le **nom exact du fichier joint**, annexes comprises) et feuille « Synthèse »
-    (par type, par moyen de paiement, dont TVA) ;
+  - `recap.xlsx` : feuille « Dépenses » (détail + total, colonnes « N° » qui
+    numérote les justificatifs dans l'ordre du ZIP, « Paiement », « Trajet »,
+    « Invités », « Société invités », « Motif » et le **nom exact du fichier
+    joint**, annexes comprises) et feuille « Synthèse » (société du profil, SIRET,
+    adresse, par type, par moyen de paiement, dont TVA) ;
   - un PDF par dépense, nommé `Projet_AAAA-MM-JJ_type_montantDEVISE.pdf`,
     par exemple `Mission_Paris_2026-10-12_hotel_248.50EUR.pdf`. Les pièces
     supplémentaires suivent en `_annexe2`, `_annexe3`… et deux dépenses qui
@@ -101,12 +119,14 @@ Secrets CI : `NOTESDEFRAIS_KEYSTORE_B64`, `NOTESDEFRAIS_KEYSTORE_PASSWORD`,
 
 ## Tests
 
-66 tests unitaires JVM : lecture des tickets (12 formats), générateur xlsx
+72 tests unitaires JVM : lecture des tickets (12 formats), générateur xlsx
 (vérifié en dézippant le classeur), nommage et numérotation des justificatifs,
-conversion de devises, ventilation TVA, barème kilométrique 2026 (exemples
-officiels de l'administration), plafonds d'exonération URSSAF 2026, détection de
-doublons, comparaison de versions et lecture du manifeste de MAJ, paramétrage des
-moyens de paiement.
+dates françaises (saisie et affichage), aller-retour et invités d'un repas,
+profils de société dans l'export, validation du SIRET, conversion de devises,
+ventilation TVA, barème kilométrique 2026 (exemples officiels de
+l'administration), plafonds d'exonération URSSAF 2026, détection de doublons,
+comparaison de versions et lecture du manifeste de MAJ, paramétrage des moyens de
+paiement.
 
 ## Technique
 

@@ -1,8 +1,13 @@
 package com.trucdecomptable.notesdefrais.data
 
+import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.Index
+import androidx.room.Insert
 import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -23,6 +28,56 @@ enum class TypeDepense(val label: String, val slug: String) {
     }
 }
 
+/** One way or a return trip, asked for trains and planes. */
+enum class SensTrajet(val label: String, val slug: String) {
+    ALLER("Aller", "aller"),
+    ALLER_RETOUR("Aller-retour", "aller-retour");
+
+    companion object {
+        fun fromName(name: String): SensTrajet? = entries.firstOrNull { it.name == name }
+    }
+}
+
+/**
+ * Une société du cabinet (deux sociétés = deux jeux de projets). Le titulaire,
+ * lui, reste dans le paramétrage : c'est la même personne qui engage les frais.
+ */
+@Entity(tableName = "profils")
+data class Profil(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Raison sociale, telle qu'elle doit apparaître sur l'export. */
+    val nom: String,
+    val siret: String = "",
+    val adresse: String = "",
+    /** Destinataire des exports pour cette société ; vide = celui du paramétrage. */
+    val emailDestinataire: String = "",
+    val creeLe: Long = System.currentTimeMillis(),
+)
+
+@Dao
+interface ProfilsDao {
+    @Query("SELECT * FROM profils ORDER BY nom COLLATE NOCASE")
+    fun profils(): Flow<List<Profil>>
+
+    @Query("SELECT * FROM profils ORDER BY nom COLLATE NOCASE")
+    suspend fun tousLesProfils(): List<Profil>
+
+    @Query("SELECT * FROM profils WHERE id = :id")
+    suspend fun profil(id: Long): Profil?
+
+    @Insert
+    suspend fun ajouter(profil: Profil): Long
+
+    @Update
+    suspend fun maj(profil: Profil)
+
+    @Query("DELETE FROM profils WHERE id = :id")
+    suspend fun supprimer(id: Long)
+
+    @Query("UPDATE projets SET profilId = :profilId WHERE profilId = :ancien")
+    suspend fun transfererProjets(ancien: Long, profilId: Long)
+}
+
 @Entity(tableName = "projets")
 data class Projet(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -31,6 +86,8 @@ data class Projet(
     /** A closed project is read-only: the report has been handed over. */
     val cloture: Boolean = false,
     val clotureLe: Long? = null,
+    /** Société propriétaire du projet ; 0 = pas de profil (société du paramétrage). */
+    val profilId: Long = 0,
 )
 
 /**
@@ -77,8 +134,27 @@ data class Depense(
      * past expenses.
      */
     val moyenPaiement: String = "",
+    /**
+     * Aller simple ou aller-retour, pour le train et l'avion. Vide quand la
+     * question ne se pose pas.
+     */
+    val sensTrajet: String = "",
+    /** Repas : qui était là (nom et prénom), pour qui, et pourquoi. */
+    val participants: String = "",
+    val societeParticipant: String = "",
+    val motifRepas: String = "",
 ) {
     val typeDepense: TypeDepense get() = TypeDepense.fromName(type)
+
+    /** The trip question only means something for a train or a plane. */
+    val trajetDemande: Boolean
+        get() = typeDepense == TypeDepense.TRAIN || typeDepense == TypeDepense.AVION
+
+    /** A meal needs its guests and its purpose to be deductible. */
+    val repasDemande: Boolean
+        get() = typeDepense == TypeDepense.RESTAURANT_MIDI || typeDepense == TypeDepense.RESTAURANT_SOIR
+
+    val sens: SensTrajet? get() = SensTrajet.fromName(sensTrajet)
 
     val estIndemniteKm: Boolean get() = typeDepense == TypeDepense.INDENNITE_KM
 

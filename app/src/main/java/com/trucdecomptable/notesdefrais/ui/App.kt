@@ -5,10 +5,13 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -28,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.trucdecomptable.notesdefrais.data.Depense
 import com.trucdecomptable.notesdefrais.data.Parametres
 import com.trucdecomptable.notesdefrais.update.UpdateManager
 import com.trucdecomptable.notesdefrais.util.Diag
@@ -52,15 +56,21 @@ fun Racine(
     val edition by vm.edition.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val export by vm.export.collectAsStateWithLifecycle()
+    val emailExport by vm.emailExport.collectAsStateWithLifecycle()
     val sauvegarde by vm.sauvegarde.collectAsStateWithLifecycle()
     val derniere by vm.derniere.collectAsStateWithLifecycle()
     val parametres by vm.parametres.collectAsStateWithLifecycle()
+    val profils by vm.profils.collectAsStateWithLifecycle()
+    val profilCourant by vm.profilCourant.collectAsStateWithLifecycle()
 
     val snackbar = remember { SnackbarHostState() }
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
     var reglages by remember { mutableStateOf(false) }
     var indemnite by remember { mutableStateOf(false) }
     var deverrouille by remember { mutableStateOf(!parametres.verrouillageActif) }
+    // Pièce ouverte en grand avant le formulaire (option du paramétrage).
+    var pieceEnGrand by remember { mutableStateOf<String?>(null) }
+    var apresGrand by remember { mutableStateOf<Depense?>(null) }
 
     val launcherPhoto = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture(),
@@ -137,7 +147,7 @@ fun Racine(
             fichier = fichier,
             type = "application/zip",
             sujet = "Notes de frais · $nom · ${parametres.mention}",
-            email = parametres.emailDestinataire,
+            email = emailExport ?: parametres.emailDestinataire,
         )
         vm.exportConsomme()
     }
@@ -180,6 +190,11 @@ fun Racine(
                 onEnregistrer = vm::enregistrerParametres,
                 onSauvegarder = { vm.sauvegarder() },
                 onRestaurer = { launcherRestauration.launch("application/zip") },
+                profils = profils,
+                onAjouterProfil = vm::ajouterProfil,
+                onMajProfil = vm::majProfil,
+                onSupprimerProfil = vm::supprimerProfil,
+                chercherSiret = { siret -> vm.chercherSiret(siret) },
             )
 
             courant == null -> EcranProjets(
@@ -192,6 +207,9 @@ fun Racine(
                 onReglages = { reglages = true },
                 onCloturer = vm::cloturerProjet,
                 onDupliquer = vm::dupliquerProjet,
+                profils = profils,
+                profilCourant = profilCourant,
+                onChoisirProfil = vm::choisirProfil,
             )
 
             else -> EcranProjet(
@@ -203,8 +221,17 @@ fun Racine(
                 onGalerie = { launcherGalerie.launch(arrayOf("image/*", "application/pdf")) },
                 onManuel = vm::ajouterManuellement,
                 onExport = vm::exporter,
-                onOuvrirDepense = vm::editer,
+                onOuvrirDepense = { depense ->
+                    val piece = depense.tousLesFichiers.firstOrNull()
+                    if (parametres.pieceEnGrand && piece != null) {
+                        apresGrand = depense
+                        pieceEnGrand = piece
+                    } else {
+                        vm.editer(depense)
+                    }
+                },
                 onIndemniteKm = { indemnite = true },
+                onRecadrerPiece = vm::recadrerPiece,
             )
         }
 
@@ -233,6 +260,23 @@ fun Racine(
             tauxPour = vm::tauxBdf,
             onAjouterPiece = { uri -> vm.ajouterPieceJointe(initiale, uri) },
             moyensPaiement = parametres.moyensPaiement,
+            onRecadrerPiece = { nom, bitmap -> vm.recadrerPiece(initiale, nom, bitmap) },
+        )
+    }
+
+    // Ouverture « en grand d'abord » : la pièce s'affiche, puis le formulaire
+    // s'ouvre à la fermeture (option du paramétrage).
+    pieceEnGrand?.let { nom ->
+        ApercuPiece(
+            nom = nom,
+            onFermer = {
+                pieceEnGrand = null
+                apresGrand?.let { vm.editer(it) }
+                apresGrand = null
+            },
+            onRecadrer = { piece, bitmap ->
+                apresGrand?.let { vm.recadrerPiece(it, piece, bitmap) }
+            },
         )
     }
 
@@ -280,11 +324,19 @@ private fun DialogueMiseAJour(
             onDismissRequest = {},
             title = { Text("Téléchargement…") },
             text = {
-                Text("${(etat.progress * 100).toInt()} %")
-                LinearProgressIndicator(
-                    progress = { etat.progress },
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+                Column {
+                    LinearProgressIndicator(
+                        progress = { etat.progress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    // Le pourcentage sous la barre, avec de l'air : collé au
+                    // trait, il était illisible.
+                    Text(
+                        "${(etat.progress * 100).toInt()} % téléchargé",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
             },
             confirmButton = {},
         )

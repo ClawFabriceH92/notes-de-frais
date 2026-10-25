@@ -99,7 +99,8 @@ class ExportTest {
 
         val detail = entrees["xl/worksheets/sheet1.xml"].orEmpty()
         assertTrue(detail.contains("Dépenses").not()) // the name lives in workbook.xml
-        assertTrue(detail.contains("2026-10-12"))
+        // Les dates sortent en jj/mm/aaaa, comme Fabrice les lit.
+        assertTrue(detail.contains("12/10/2026"))
         assertTrue(detail.contains("Hôtel"))
         assertTrue(detail.contains("248.5") || detail.contains("248.50"))
         assertTrue(detail.contains("TOTAL"))

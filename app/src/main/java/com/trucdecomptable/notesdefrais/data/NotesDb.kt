@@ -19,6 +19,10 @@ interface NotesDao {
     @Query("SELECT * FROM projets ORDER BY creeLe DESC")
     fun projets(): Flow<List<Projet>>
 
+    /** 0 = pas de filtre : tous les projets, comme avant les profils. */
+    @Query("SELECT * FROM projets WHERE profilId = :profilId OR :profilId = 0 ORDER BY creeLe DESC")
+    fun projetsDuProfil(profilId: Long): Flow<List<Projet>>
+
     @Query("SELECT * FROM projets ORDER BY creeLe DESC")
     suspend fun tousLesProjets(): List<Projet>
 
@@ -66,9 +70,10 @@ interface NotesDao {
     suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class], version = 4, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class, Profil::class], version = 5, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
+    abstract fun profilsDao(): ProfilsDao
 
     companion object {
         @Volatile
@@ -103,12 +108,31 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE depenses ADD COLUMN sensTrajet TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE depenses ADD COLUMN participants TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE depenses ADD COLUMN societeParticipant TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE depenses ADD COLUMN motifRepas TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE projets ADD COLUMN profilId INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS profils (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "nom TEXT NOT NULL, " +
+                        "siret TEXT NOT NULL DEFAULT '', " +
+                        "adresse TEXT NOT NULL DEFAULT '', " +
+                        "emailDestinataire TEXT NOT NULL DEFAULT '', " +
+                        "creeLe INTEGER NOT NULL)",
+                )
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 NotesDb::class.java,
                 "notes-de-frais.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
         }
 
         /** Closes the database so a restore can replace the file on disk. */
