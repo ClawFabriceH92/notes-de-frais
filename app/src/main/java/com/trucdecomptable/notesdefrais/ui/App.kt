@@ -63,6 +63,12 @@ fun Racine(
     val profils by vm.profils.collectAsStateWithLifecycle()
     val profilCourant by vm.profilCourant.collectAsStateWithLifecycle()
     val tousProjets by vm.tousProjets.collectAsStateWithLifecycle()
+    val profilActif by vm.profilActif.collectAsStateWithLifecycle()
+
+    // Moyens de paiement proposés : les communs, plus ceux de la société en cours.
+    val moyensPaiement = remember(parametres.moyensPaiement, profilActif) {
+        (parametres.moyensPaiement + (profilActif?.moyens ?: emptyList())).distinct()
+    }
 
     val snackbar = remember { SnackbarHostState() }
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
@@ -273,7 +279,7 @@ fun Racine(
             onAnnuler = vm::fermerEditeur,
             onValider = vm::validerBrouillon,
             tauxPour = vm::tauxBdf,
-            moyensPaiement = parametres.moyensPaiement,
+            moyensPaiement = moyensPaiement,
         )
     }
 
@@ -285,7 +291,7 @@ fun Racine(
             onSupprimer = { vm.supprimerDepense(it); vm.fermerEditeur() },
             tauxPour = vm::tauxBdf,
             onAjouterPiece = { uri -> vm.ajouterPieceJointe(initiale, uri) },
-            moyensPaiement = parametres.moyensPaiement,
+            moyensPaiement = moyensPaiement,
             onRecadrerPiece = { nom, bitmap -> vm.recadrerPiece(initiale, nom, bitmap) },
             // Un projet clôturé est en lecture seule : il n'est pas proposé.
             projetsCibles = tousProjets.filter { !it.cloture && it.id != initiale.projetId },

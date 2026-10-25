@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -60,6 +61,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     /** Société sur laquelle on travaille : ses projets, son export. */
     private val _profilCourant = MutableStateFlow(parametresStore.lire().profilCourant)
     val profilCourant: StateFlow<Long> = _profilCourant.asStateFlow()
+
+    /** Le profil en cours, pour ses moyens de paiement propres notamment. */
+    val profilActif: StateFlow<Profil?> = combine(profils, _profilCourant) { liste, id ->
+        liste.firstOrNull { it.id == id }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun choisirProfil(id: Long) {
         _profilCourant.value = id

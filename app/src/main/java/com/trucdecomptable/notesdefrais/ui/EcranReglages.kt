@@ -405,6 +405,11 @@ private fun DialogueProfil(
     var adresse by remember { mutableStateOf(initial.adresse) }
     var email by remember { mutableStateOf(initial.emailDestinataire) }
     var paiement by remember { mutableStateOf(initial.moyenPaiementDefaut) }
+    // Moyens propres à la société, ajoutés en plus des moyens communs.
+    var propres by remember { mutableStateOf(initial.moyens) }
+    var ajout by remember { mutableStateOf<String?>(null) }
+    var choixPaiement by remember { mutableStateOf(false) }
+    val tous = (moyens + propres).distinct()
     var recherche by remember { mutableStateOf(false) }
     var retour by remember { mutableStateOf<String?>(null) }
     val portee = androidx.compose.runtime.rememberCoroutineScope()
@@ -468,10 +473,36 @@ private fun DialogueProfil(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                // Le moyen de paiement par défaut appartient à la société : la
-                // carte d'une société ne sert pas à l'autre. Un choix explicite
-                // (liste à cocher) plutôt que des puces : on voit la valeur.
-                var choixPaiement by remember { mutableStateOf(false) }
+                // Moyens de paiement : les communs s'appliquent à tous les
+                // justificatifs et ne se suppriment pas ici ; la société peut
+                // ajouter les siens (une carte propre à cette société).
+                Text("Moyens de paiement de la société", style = MaterialTheme.typography.labelLarge)
+                moyens.forEach { moyen ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(moyen, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Text(
+                            "commun",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                }
+                propres.forEach { moyen ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(moyen, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        IconButton(onClick = {
+                            propres = propres - moyen
+                            if (paiement == moyen) paiement = ""
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Retirer $moyen")
+                        }
+                    }
+                }
+                OutlinedButton(onClick = { ajout = "" }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Text("  Ajouter un moyen propre à cette société")
+                }
+
                 Row(
                     Modifier.fillMaxWidth().clickable { choixPaiement = true }.padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -484,6 +515,23 @@ private fun DialogueProfil(
                         )
                     }
                     TextButton(onClick = { choixPaiement = true }) { Text("Choisir") }
+                }
+
+                if (ajout != null) {
+                    DialogueTexte(
+                        titre = "Moyen de paiement de la société",
+                        libelle = "Nom (ex. CB BNP de la société)",
+                        valeurInitiale = ajout.orEmpty(),
+                        onAnnuler = { ajout = null },
+                        onValider = { nom ->
+                            val propre = nom.trim()
+                            if (propre.isNotEmpty()) {
+                                propres = (propres + propre).distinct()
+                                if (paiement.isBlank()) paiement = propre
+                            }
+                            ajout = null
+                        },
+                    )
                 }
 
                 if (choixPaiement) {
@@ -507,7 +555,7 @@ private fun DialogueProfil(
                                         style = MaterialTheme.typography.bodyMedium,
                                     )
                                 }
-                                moyens.forEach { moyen ->
+                                tous.forEach { moyen ->
                                     Row(
                                         Modifier.fillMaxWidth()
                                             .clickable { paiement = moyen; choixPaiement = false }
@@ -520,13 +568,6 @@ private fun DialogueProfil(
                                         )
                                         Text(moyen, style = MaterialTheme.typography.bodyMedium)
                                     }
-                                }
-                                if (moyens.isEmpty()) {
-                                    Text(
-                                        "Aucun moyen de paiement nommé : ajoute-les dans la section " +
-                                            "« Moyens de paiement » du paramétrage.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
                                 }
                             }
                         },
@@ -548,6 +589,7 @@ private fun DialogueProfil(
                             adresse = adresse.trim(),
                             emailDestinataire = email.trim(),
                             moyenPaiementDefaut = paiement.trim(),
+                            moyensPaiement = propres.joinToString("|"),
                         ),
                     )
                 },

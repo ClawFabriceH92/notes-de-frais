@@ -188,6 +188,7 @@ object Sauvegarde {
                             put("adresse", profil.adresse)
                             put("emailDestinataire", profil.emailDestinataire)
                             put("moyenPaiementDefaut", profil.moyenPaiementDefaut)
+                            put("moyensPaiement", profil.moyensPaiement)
                         },
                     )
                 }
@@ -230,11 +231,19 @@ object Sauvegarde {
             val adresse = json.optString("adresse")
             val email = json.optString("emailDestinataire")
             val moyen = json.optString("moyenPaiementDefaut")
+            val moyens = json.optString("moyensPaiement")
             val connu = existants.firstOrNull {
                 it.nom.equals(nom, ignoreCase = true) && it.siret == siret
             }
             if (connu != null) {
-                dao.maj(connu.copy(adresse = adresse, emailDestinataire = email, moyenPaiementDefaut = moyen))
+                dao.maj(
+                    connu.copy(
+                        adresse = adresse,
+                        emailDestinataire = email,
+                        moyenPaiementDefaut = moyen,
+                        moyensPaiement = moyens,
+                    ),
+                )
                 maj++
             } else {
                 dao.ajouter(
@@ -244,6 +253,7 @@ object Sauvegarde {
                         adresse = adresse,
                         emailDestinataire = email,
                         moyenPaiementDefaut = moyen,
+                        moyensPaiement = moyens,
                     ),
                 )
                 ajoutes++

@@ -70,7 +70,7 @@ interface NotesDao {
     suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class, Profil::class], version = 7, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class, Profil::class], version = 8, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
     abstract fun profilsDao(): ProfilsDao
@@ -145,13 +145,21 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        /** Chaque société peut ajouter ses propres moyens de paiement. */
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE profils ADD COLUMN moyensPaiement TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 NotesDb::class.java,
                 "notes-de-frais.db",
             ).addMigrations(
-                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
+                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+                MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
             ).build().also { instance = it }
         }
 

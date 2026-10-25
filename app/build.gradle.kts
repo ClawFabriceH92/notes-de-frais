@@ -57,8 +57,8 @@ android {
         applicationId = "com.trucdecomptable.notesdefrais"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.6.1"
+        versionCode = 17
+        versionName = "1.6.2"
         resourceConfigurations += listOf("fr")
     }
 

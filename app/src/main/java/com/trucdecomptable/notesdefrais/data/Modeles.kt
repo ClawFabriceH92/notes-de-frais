@@ -60,8 +60,21 @@ data class Profil(
      * vide = celui du paramétrage général.
      */
     val moyenPaiementDefaut: String = "",
+    /**
+     * Moyens de paiement propres à cette société, séparés par '|'. Les moyens
+     * communs du paramétrage restent toujours disponibles et ne sont pas
+     * supprimables ici.
+     */
+    val moyensPaiement: String = "",
     val creeLe: Long = System.currentTimeMillis(),
-)
+) {
+    /** Moyens propres à la société, sans doublon ni vide. */
+    val moyens: List<String>
+        get() = moyensPaiement.split('|').map { it.trim() }.filter { it.isNotBlank() }.distinct()
+
+    /** Tout ce qu'on peut choisir sur une dépense de cette société. */
+    fun moyensAvec(communs: List<String>): List<String> = (communs + moyens).distinct()
+}
 
 @Dao
 interface ProfilsDao {
