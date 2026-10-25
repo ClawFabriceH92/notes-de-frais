@@ -34,6 +34,8 @@ data class Parametres(
     val moyensPaiement: List<String> = MOYENS_PAIEMENT_DEFAUT,
     /** Pre-selected in the expense form; empty means "nothing pre-selected". */
     val moyenPaiementDefaut: String = MOYENS_PAIEMENT_DEFAUT.first(),
+    /** Set once the expenses recorded before the feature got the default card. */
+    val paiementRempliAuto: Boolean = false,
 ) {
     val verrouillageActif: Boolean get() = codeAccesHash.isNotBlank()
 
@@ -70,6 +72,7 @@ data class Parametres(
         put("codeAccesHash", codeAccesHash)
         put("moyensPaiement", JSONArray(moyensPaiement))
         put("moyenPaiementDefaut", moyenPaiementDefaut)
+        put("paiementRempliAuto", paiementRempliAuto)
     }
 
     companion object {
@@ -98,6 +101,7 @@ data class Parametres(
                     .distinct()
             } ?: MOYENS_PAIEMENT_DEFAUT,
             moyenPaiementDefaut = json.optString("moyenPaiementDefaut", MOYENS_PAIEMENT_DEFAUT.first()),
+            paiementRempliAuto = json.optBoolean("paiementRempliAuto", false),
         )
     }
 }

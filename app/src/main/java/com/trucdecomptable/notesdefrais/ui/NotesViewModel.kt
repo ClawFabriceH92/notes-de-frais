@@ -107,6 +107,19 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         // Rates come from trucdecomptable.fr (Banque de France series). A phone
         // that is offline keeps the last downloaded copy.
         viewModelScope.launch { tauxClient.rafraichir() }
+        // Expenses recorded before the payment method existed inherit the
+        // default card, once: the flag stops a later choice from being undone.
+        viewModelScope.launch {
+            val p = _parametres.value
+            if (p.paiementRempliAuto || p.moyenPaiementDefaut.isBlank()) return@launch
+            val touchees = runCatching { dao.remplirMoyenPaiement(p.moyenPaiementDefaut) }
+                .onFailure { Diag.record("paiement/pre-remplissage", it) }
+                .getOrDefault(0)
+            enregistrerParametresSilencieux(p.copy(paiementRempliAuto = true))
+            if (touchees > 0) {
+                _message.value = "$touchees dépense(s) existante(s) marquées « ${p.moyenPaiementDefaut} »"
+            }
+        }
     }
 
     /** Rate for the expense date, from the Banque de France series. */

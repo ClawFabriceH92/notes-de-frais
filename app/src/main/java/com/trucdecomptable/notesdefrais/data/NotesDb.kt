@@ -60,6 +60,10 @@ interface NotesDao {
 
     @Query("SELECT COUNT(*) FROM depenses WHERE fichier = :fichier")
     suspend fun compterFichier(fichier: String): Int
+
+    /** Fills the payment method of the expenses recorded before the feature. */
+    @Query("UPDATE depenses SET moyenPaiement = :moyen WHERE moyenPaiement = ''")
+    suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
 @Database(entities = [Projet::class, Depense::class], version = 4, exportSchema = false)

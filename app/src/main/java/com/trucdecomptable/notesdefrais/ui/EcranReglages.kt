@@ -94,6 +94,8 @@ fun EcranReglages(
         codeAccesHash = if (code.isBlank()) codeHash else com.trucdecomptable.notesdefrais.util.empreinte(code),
         moyensPaiement = moyens,
         moyenPaiementDefaut = paiementDefaut.takeIf { it in moyens }.orEmpty(),
+        // Already done: saving the settings must not trigger it a second time.
+        paiementRempliAuto = initial.paiementRempliAuto,
     )
 
     Scaffold(
