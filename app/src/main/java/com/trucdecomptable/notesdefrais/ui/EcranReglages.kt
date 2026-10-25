@@ -13,6 +13,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material3.Button
@@ -68,6 +70,9 @@ fun EcranReglages(
     var devise by remember { mutableStateOf(initial.deviseDefaut) }
     var tauxTva by remember { mutableStateOf(initial.tvaDefautBp) }
     var zoneParis by remember { mutableStateOf(initial.zoneParis) }
+    var moyens by remember { mutableStateOf(initial.moyensPaiement) }
+    var paiementDefaut by remember { mutableStateOf(initial.moyenPaiementDefaut) }
+    var nouveauMoyen by remember { mutableStateOf<String?>(null) }
     var code by remember { mutableStateOf("") }
     var codeHash by remember { mutableStateOf(initial.codeAccesHash) }
 
@@ -87,6 +92,8 @@ fun EcranReglages(
         tvaDefautBp = tauxTva,
         zoneParis = zoneParis,
         codeAccesHash = if (code.isBlank()) codeHash else com.trucdecomptable.notesdefrais.util.empreinte(code),
+        moyensPaiement = moyens,
+        moyenPaiementDefaut = paiementDefaut.takeIf { it in moyens }.orEmpty(),
     )
 
     Scaffold(
@@ -183,6 +190,33 @@ fun EcranReglages(
             }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Moyens de paiement", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Tes cartes et les autres façons de payer. La puce pleine est celle proposée par défaut sur une nouvelle dépense.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            moyens.forEach { moyen ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(
+                        selected = paiementDefaut == moyen,
+                        onClick = { paiementDefaut = if (paiementDefaut == moyen) "" else moyen },
+                        label = { Text(moyen) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = {
+                        moyens = moyens - moyen
+                        if (paiementDefaut == moyen) paiementDefaut = moyens.firstOrNull().orEmpty()
+                    }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Retirer $moyen")
+                    }
+                }
+            }
+            OutlinedButton(onClick = { nouveauMoyen = "" }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Text("  Ajouter un moyen de paiement")
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Text("Verrouillage", style = MaterialTheme.typography.titleMedium)
             Text(
                 if (initial.verrouillageActif) "Code d'accès activé. Saisir un nouveau code pour le changer."
@@ -228,5 +262,22 @@ fun EcranReglages(
                 Text("Enregistrer le paramétrage")
             }
         }
+    }
+
+    nouveauMoyen?.let { valeur ->
+        DialogueTexte(
+            titre = "Nouveau moyen de paiement",
+            libelle = "Nom (ex. CB BNP pro)",
+            valeurInitiale = valeur,
+            onAnnuler = { nouveauMoyen = null },
+            onValider = { nom ->
+                val propre = nom.trim()
+                if (propre.isNotEmpty()) {
+                    moyens = (moyens + propre).distinct()
+                    if (paiementDefaut.isBlank()) paiementDefaut = propre
+                }
+                nouveauMoyen = null
+            },
+        )
     }
 }

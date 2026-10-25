@@ -3,7 +3,10 @@ package com.trucdecomptable.notesdefrais.ocr
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -25,6 +28,12 @@ import kotlin.coroutines.resumeWithException
 object ReceiptOcr {
 
     private const val MAX_DIMENSION = 2400
+
+    /** An invoice received by mail often runs over two or three pages. */
+    private const val PAGES_PDF = 3
+
+    /** Rendered width of a PDF page handed to ML Kit. */
+    private const val LARGEUR_PDF = 1700
 
     private val recognizer by lazy {
         TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
@@ -49,21 +58,80 @@ object ReceiptOcr {
         }
     }
 
-    /** Reads the text of a stored receipt; a PDF gives its first page picture only. */
+    /**
+     * Reads the text of a stored receipt. A photo goes straight to ML Kit; a
+     * PDF is rendered page by page first, since the recogniser only takes
+     * bitmaps. An encrypted or damaged PDF yields "" and the form opens, which
+     * is still better than refusing the file.
+     */
     suspend fun texte(context: Context, fichier: File): String = withContext(Dispatchers.IO) {
-        val bitmap = decoder(fichier) ?: return@withContext ""
+        if (ExportManager.estPdf(fichier)) textePdf(fichier) else texteImage(fichier)
+    }
+
+    private suspend fun texteImage(fichier: File): String {
+        val bitmap = decoder(fichier) ?: return ""
         try {
-            val image = InputImage.fromBitmap(bitmap, 0)
-            suspendCancellableCoroutine { continuation ->
-                recognizer.process(image)
-                    .addOnSuccessListener { result -> continuation.resume(result.text) }
-                    .addOnFailureListener { e ->
-                        Diag.record("ocr", e)
-                        continuation.resumeWithException(e)
-                    }
-            }
+            return texteBitmap(bitmap)
         } finally {
             bitmap.recycle()
+        }
+    }
+
+    /** Renders the first pages of a PDF and reads each one. */
+    private suspend fun textePdf(fichier: File): String {
+        if (!fichier.exists()) return ""
+        val descripteur = runCatching {
+            ParcelFileDescriptor.open(fichier, ParcelFileDescriptor.MODE_READ_ONLY)
+        }.onFailure { Diag.record("ocr/pdf-ouverture", it) }.getOrNull() ?: return ""
+
+        try {
+            PdfRenderer(descripteur).use { moteur ->
+                val texte = StringBuilder()
+                val pages = minOf(moteur.pageCount, PAGES_PDF)
+                for (index in 0 until pages) {
+                    val page = runCatching { moteur.openPage(index) }.getOrNull() ?: continue
+                    try {
+                        val bitmap = runCatching { rendre(page) }.getOrNull() ?: continue
+                        try {
+                            texte.append(texteBitmap(bitmap)).append('\n')
+                        } finally {
+                            bitmap.recycle()
+                        }
+                    } finally {
+                        runCatching { page.close() }
+                    }
+                }
+                return texte.toString()
+            }
+        } catch (e: Exception) {
+            Diag.record("ocr/pdf", e)
+            return ""
+        } finally {
+            runCatching { descripteur.close() }
+        }
+    }
+
+    private fun rendre(page: PdfRenderer.Page): Bitmap {
+        val echelle = (LARGEUR_PDF.toFloat() / page.width.toFloat()).coerceIn(1f, 3f)
+        val largeur = (page.width * echelle).toInt().coerceAtLeast(1)
+        val hauteur = (page.height * echelle).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(largeur, hauteur, Bitmap.Config.ARGB_8888)
+        // PdfRenderer leaves untouched areas transparent: paint the paper white
+        // first, otherwise ML Kit reads white-on-white.
+        android.graphics.Canvas(bitmap).drawColor(Color.WHITE)
+        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+        return bitmap
+    }
+
+    private suspend fun texteBitmap(bitmap: Bitmap): String {
+        val image = InputImage.fromBitmap(bitmap, 0)
+        return suspendCancellableCoroutine { continuation ->
+            recognizer.process(image)
+                .addOnSuccessListener { result -> continuation.resume(result.text) }
+                .addOnFailureListener { e ->
+                    Diag.record("ocr", e)
+                    continuation.resumeWithException(e)
+                }
         }
     }
 

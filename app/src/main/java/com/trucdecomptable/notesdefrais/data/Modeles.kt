@@ -71,6 +71,12 @@ data class Depense(
     val refacturable: Boolean = false,
     /** Extra attachments (invoice, back of the receipt), names joined by '|'. */
     val fichiersSupplementaires: String = "",
+    /**
+     * How it was paid ("CB pro", "Espèces"…). Stores the label itself rather
+     * than an index into the settings list, so renaming a card never rewrites
+     * past expenses.
+     */
+    val moyenPaiement: String = "",
 ) {
     val typeDepense: TypeDepense get() = TypeDepense.fromName(type)
 

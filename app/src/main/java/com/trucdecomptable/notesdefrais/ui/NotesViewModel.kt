@@ -226,11 +226,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val id = dao.ajouterProjet(Projet(nom = propre))
             _projet.value = dao.projet(id)
+            traiterPartagesEnAttente()
         }
     }
 
     fun ouvrirProjet(projet: Projet) {
         _projet.value = projet
+        traiterPartagesEnAttente()
     }
 
     fun fermerProjet() {
@@ -304,66 +306,100 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
      * corrected from the list.
      */
     fun traiterJustificatif(uri: Uri) {
-        val projet = _projet.value
-        if (projet == null) {
+        if (_projet.value == null) {
             _message.value = "Ouvre d'abord un projet"
             return
         }
-        viewModelScope.launch {
-            _traitement.value = true
-            try {
-                val fichier = withContext(Dispatchers.IO) { ReceiptOcr.stocker(getApplication(), uri) }
-                val texte = runCatching { ReceiptOcr.texte(getApplication(), fichier) }
-                    .onFailure { Diag.record("ocr/texte", it) }
-                    .getOrDefault("")
-                val champs = ReceiptParser.parse(texte)
-                Diag.record(
-                    "ocr/resultat",
-                    "date=${champs.date} montant=${champs.montantCentimes} type=${champs.type} tva=${champs.tvaTauxBp}",
-                )
+        viewModelScope.launch { enregistrerJustificatif(uri) }
+    }
 
-                val base = Depense(
-                    projetId = projet.id,
-                    date = champs.date ?: LocalDate.now().toString(),
-                    montantCentimes = champs.montantCentimes ?: 0L,
-                    devise = champs.devise,
-                    type = (champs.type ?: TypeDepense.AUTRE).name,
-                    libelle = champs.libelle,
-                    tvaTauxBp = champs.tvaTauxBp,
-                    fichier = fichier.name,
-                    texteOcr = texte,
-                )
+    /** Files handed over by another app, waiting for a project to land in. */
+    private val _partagesEnAttente = MutableStateFlow<List<Uri>>(emptyList())
 
-                if (champs.complet) {
-                    // A foreign receipt saved straight from OCR still needs its
-                    // euro equivalent: take the Banque de France parity here,
-                    // since no form was opened to ask for it.
-                    val avecTaux = if (!base.devise.equals("EUR", ignoreCase = true)) {
-                        val trouve = runCatching { tauxClient.taux(base.date, base.devise) }.getOrNull()
-                        base.copy(tauxChange = trouve?.valeur)
-                    } else {
-                        base
-                    }
-                    val id = dao.ajouterDepense(avecTaux)
-                    _derniere.value = avecTaux.copy(id = id)
-                    val devise = if (avecTaux.tauxChange == null && avecTaux.devise != "EUR") " · taux BdF absent" else ""
-                    val avertissement = avertissements(avecTaux.copy(id = id))
-                    _message.value = avertissement
-                        ?: "Enregistré · ${montantLisible(avecTaux)} · ${avecTaux.typeDepense.label}$devise"
-                } else {
-                    val manquants = buildList {
-                        if (champs.date == null) add("date")
-                        if (champs.montantCentimes == null) add("montant")
-                    }.joinToString(" et ")
-                    _brouillon.value = base
-                    _message.value = "À compléter : $manquants"
-                }
-            } catch (e: Exception) {
-                Diag.record("capture", e)
-                _message.value = "Lecture impossible : ${e.message ?: "erreur"}"
-            } finally {
-                _traitement.value = false
+    /**
+     * A PDF or a photo shared from the mail, the gallery or a shop app. With a
+     * project open it is filed immediately; otherwise it waits for one, since
+     * the share sheet says nothing about where it belongs.
+     */
+    fun recevoirPartage(uris: List<Uri>) {
+        val propres = uris.filter { it.scheme != null }
+        if (propres.isEmpty()) return
+        if (_projet.value == null) {
+            _partagesEnAttente.value = _partagesEnAttente.value + propres
+            _message.value = if (propres.size == 1) {
+                "Fichier reçu : ouvre le projet où le ranger"
+            } else {
+                "${propres.size} fichiers reçus : ouvre le projet où les ranger"
             }
+        } else {
+            viewModelScope.launch { propres.forEach { enregistrerJustificatif(it) } }
+        }
+    }
+
+    /** Called when a project opens: the shared files finally have a home. */
+    private fun traiterPartagesEnAttente() {
+        val liste = _partagesEnAttente.value
+        if (liste.isEmpty()) return
+        _partagesEnAttente.value = emptyList()
+        viewModelScope.launch { liste.forEach { enregistrerJustificatif(it) } }
+    }
+
+    private suspend fun enregistrerJustificatif(uri: Uri) {
+        val projet = _projet.value ?: return
+        _traitement.value = true
+        try {
+            val fichier = withContext(Dispatchers.IO) { ReceiptOcr.stocker(getApplication(), uri) }
+            val texte = runCatching { ReceiptOcr.texte(getApplication(), fichier) }
+                .onFailure { Diag.record("ocr/texte", it) }
+                .getOrDefault("")
+            val champs = ReceiptParser.parse(texte)
+            Diag.record(
+                "ocr/resultat",
+                "${fichier.name} date=${champs.date} montant=${champs.montantCentimes} type=${champs.type} tva=${champs.tvaTauxBp}",
+            )
+
+            val base = Depense(
+                projetId = projet.id,
+                date = champs.date ?: LocalDate.now().toString(),
+                montantCentimes = champs.montantCentimes ?: 0L,
+                devise = champs.devise,
+                type = (champs.type ?: TypeDepense.AUTRE).name,
+                libelle = champs.libelle,
+                tvaTauxBp = champs.tvaTauxBp,
+                fichier = fichier.name,
+                texteOcr = texte,
+                moyenPaiement = _parametres.value.moyenPaiementDefaut,
+            )
+
+            if (champs.complet) {
+                // A foreign receipt saved straight from OCR still needs its
+                // euro equivalent: take the Banque de France parity here,
+                // since no form was opened to ask for it.
+                val avecTaux = if (!base.devise.equals("EUR", ignoreCase = true)) {
+                    val trouve = runCatching { tauxClient.taux(base.date, base.devise) }.getOrNull()
+                    base.copy(tauxChange = trouve?.valeur)
+                } else {
+                    base
+                }
+                val id = dao.ajouterDepense(avecTaux)
+                _derniere.value = avecTaux.copy(id = id)
+                val devise = if (avecTaux.tauxChange == null && avecTaux.devise != "EUR") " · taux BdF absent" else ""
+                val avertissement = avertissements(avecTaux.copy(id = id))
+                _message.value = avertissement
+                    ?: "Enregistré · ${montantLisible(avecTaux)} · ${avecTaux.typeDepense.label}$devise"
+            } else {
+                val manquants = buildList {
+                    if (champs.date == null) add("date")
+                    if (champs.montantCentimes == null) add("montant")
+                }.joinToString(" et ")
+                _brouillon.value = base
+                _message.value = "À compléter : $manquants"
+            }
+        } catch (e: Exception) {
+            Diag.record("capture", e)
+            _message.value = "Lecture impossible : ${e.message ?: "erreur"}"
+        } finally {
+            _traitement.value = false
         }
     }
 
@@ -377,6 +413,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             devise = p.deviseDefaut,
             type = TypeDepense.AUTRE.name,
             tvaTauxBp = p.tvaDefautBp.takeIf { it > 0 },
+            moyenPaiement = p.moyenPaiementDefaut,
         )
     }
 

@@ -239,6 +239,7 @@ fun EcranProjet(
         else depenses.filter { d ->
             d.libelle.contains(recherche, ignoreCase = true) ||
                 d.typeDepense.label.contains(recherche, ignoreCase = true) ||
+                d.moyenPaiement.contains(recherche, ignoreCase = true) ||
                 d.date.contains(recherche) ||
                 d.trajet.contains(recherche, ignoreCase = true)
         }
@@ -275,7 +276,7 @@ fun EcranProjet(
                         onClick = { menuAjout = false; onPhoto() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Choisir un fichier") },
+                        text = { Text("Choisir un fichier (photo ou PDF)") },
                         onClick = { menuAjout = false; onGalerie() },
                     )
                     DropdownMenuItem(
@@ -388,6 +389,9 @@ private fun LigneDepense(depense: Depense, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                 )
+                if (depense.moyenPaiement.isNotBlank()) {
+                    Text(depense.moyenPaiement, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                }
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(

@@ -65,6 +65,7 @@ fun DialogueDepense(
     onSupprimer: ((Depense) -> Unit)? = null,
     tauxPour: (String, String) -> TauxBdf.Taux? = { _, _ -> null },
     onAjouterPiece: ((android.net.Uri) -> Unit)? = null,
+    moyensPaiement: List<String> = emptyList(),
 ) {
     var date by remember { mutableStateOf(initiale.date) }
     var montant by remember { mutableStateOf(if (initiale.montantCentimes > 0) centimesVersTexte(initiale.montantCentimes) else "") }
@@ -76,11 +77,12 @@ fun DialogueDepense(
     var tauxTva by remember { mutableStateOf(initiale.tvaTauxBp ?: 2000) }
     var choixDate by remember { mutableStateOf(false) }
     var refacturable by remember { mutableStateOf(initiale.refacturable) }
+    var paiement by remember { mutableStateOf(initiale.moyenPaiement) }
     var tauxBdf by remember { mutableStateOf<TauxBdf.Taux?>(null) }
     var apercu by remember { mutableStateOf<String?>(null) }
 
     val launcherPiece = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.GetContent(),
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let { onAjouterPiece?.invoke(it) } }
 
     // The rate is the Banque de France parity for the expense date, published
@@ -182,6 +184,40 @@ fun DialogueDepense(
                     }
                 }
 
+                // Which card paid: several CBs, cash, a transfer. The labels come
+                // from the settings, and an older value keeps its own chip so a
+                // renamed card never loses the history.
+                Text("Mode de paiement", style = MaterialTheme.typography.labelLarge)
+                val options = remember(moyensPaiement, paiement) {
+                    (moyensPaiement + paiement)
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .distinct()
+                }
+                if (options.isEmpty()) {
+                    OutlinedTextField(
+                        value = paiement,
+                        onValueChange = { paiement = it },
+                        label = { Text("Moyen de paiement (ex. CB pro)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        options.forEach { moyen ->
+                            FilterChip(
+                                selected = paiement == moyen,
+                                onClick = { paiement = if (paiement == moyen) "" else moyen },
+                                label = { Text(moyen) },
+                            )
+                        }
+                    }
+                    Text(
+                        "Toucher une puce pour l'enlever. La liste se règle dans le paramétrage.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = ventiler, onCheckedChange = { ventiler = it })
                     Spacer(Modifier.padding(start = 8.dp))
@@ -234,7 +270,7 @@ fun DialogueDepense(
                 }
 
                 if (initiale.id != 0L && onAjouterPiece != null) {
-                    TextButton(onClick = { launcherPiece.launch("image/*") }) {
+                    TextButton(onClick = { launcherPiece.launch(arrayOf("image/*", "application/pdf")) }) {
                         Text(
                             "Ajouter une pièce jointe" +
                                 if (initiale.tousLesFichiers.size > 1) " (${initiale.tousLesFichiers.size} déjà jointes)" else "",
@@ -257,6 +293,7 @@ fun DialogueDepense(
                             libelle = libelle.trim(),
                             tvaTauxBp = if (ventiler) tauxTva else null,
                             refacturable = refacturable,
+                            moyenPaiement = paiement.trim(),
                         ),
                     )
                 },

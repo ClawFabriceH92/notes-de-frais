@@ -1,7 +1,6 @@
 package com.trucdecomptable.notesdefrais.export
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Paint
@@ -28,6 +27,14 @@ object ExportManager {
     const val DOSSIER_JUSTIFICATIFS = "justificatifs"
     const val DOSSIER_EXPORTS = "exports"
 
+    /**
+     * One line of the export: the expense, its running number in the archive
+     * and the exact file names written. The workbook and the ZIP are built from
+     * the same list, so a renamed or duplicated file can never drift apart.
+     * [numero] is 0 when the expense has no attachment at all.
+     */
+    data class Justificatif(val depense: Depense, val numero: Int, val noms: List<String>)
+
     fun dossier(context: Context, nom: String): File =
         File(context.filesDir, nom).apply { mkdirs() }
 
@@ -50,6 +57,31 @@ object ExportManager {
     }
 
     /**
+     * Numbers the attachments in export order: 1, 2, 3… skipping expenses that
+     * have no file at all, so the numbers match the ZIP one for one.
+     * [existe] drops attachments whose file is no longer on the phone.
+     */
+    fun planJustificatifs(
+        slug: String,
+        depenses: List<Depense>,
+        existe: (String) -> Boolean = { true },
+    ): List<Justificatif> {
+        val pris = mutableSetOf<String>()
+        var numero = 0
+        return depenses.sortedWith(compareBy({ it.date }, { it.creeLe })).map { depense ->
+            val presents = depense.tousLesFichiers.filter(existe)
+            if (presents.isEmpty()) return@map Justificatif(depense, 0, emptyList())
+            val base = nomJustificatif(slug, depense).removeSuffix(".pdf")
+            val noms = presents.mapIndexed { rang, _ ->
+                // Second and later attachments are named _annexe2, _annexe3…
+                val propose = if (rang == 0) "$base.pdf" else "${base}_annexe${rang + 1}.pdf"
+                unique(propose, pris)
+            }
+            Justificatif(depense, ++numero, noms)
+        }
+    }
+
+    /**
      * Zips the project: recap.xlsx plus one PDF per expense. Returned file lives
      * in filesDir/exports so the FileProvider can hand it to any app.
      */
@@ -65,32 +97,30 @@ object ExportManager {
             val horodatage = java.time.LocalDateTime.now()
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
             val zipFile = File(dossierExports(context), "$prefixe${slug}_$horodatage.zip")
-            val pris = mutableSetOf<String>()
+            val dossierPieces = dossierJustificatifs(context)
+            val plan = planJustificatifs(slug, depenses) { nom -> File(dossierPieces, nom).exists() }
 
             ZipOutputStream(FileOutputStream(zipFile)).use { zip ->
                 zip.putNextEntry(ZipEntry("recap.xlsx"))
-                XlsxWriter().ecrire(feuilles(projet, depenses, parametres), zip)
+                XlsxWriter().ecrire(feuilles(projet, depenses, parametres, plan), zip)
                 zip.closeEntry()
 
-                for (depense in depenses.sortedWith(compareBy({ it.date }, { it.creeLe }))) {
-                    val base = nomJustificatif(slug, depense).removeSuffix(".pdf")
-                    var rang = 0
-                    for (nomFichier in depense.tousLesFichiers) {
-                        val source = File(dossierJustificatifs(context), nomFichier).takeIf { it.exists() } ?: continue
-                        // Second and later attachments are named _annexe2, _annexe3…
-                        val propose = if (rang == 0) "$base.pdf" else "${base}_annexe${rang + 1}.pdf"
-                        val nom = unique(propose, pris)
+                for (justificatif in plan.filter { it.noms.isNotEmpty() }) {
+                    val sources = justificatif.depense.tousLesFichiers
+                        .map { File(dossierPieces, it) }
+                        .filter { it.exists() }
+                    justificatif.noms.forEachIndexed { rang, nom ->
+                        val source = sources.getOrNull(rang) ?: return@forEachIndexed
                         zip.putNextEntry(ZipEntry(nom))
                         if (estPdf(source)) {
                             source.inputStream().use { it.copyTo(zip) }
                         } else {
-                            val pdf = File(context.cacheDir, "tmp-${depense.id}-$rang.pdf")
+                            val pdf = File(context.cacheDir, "tmp-${justificatif.depense.id}-$rang.pdf")
                             imageVersPdf(source, pdf)
                             pdf.inputStream().use { it.copyTo(zip) }
                             pdf.delete()
                         }
                         zip.closeEntry()
-                        rang++
                     }
                 }
             }
@@ -152,11 +182,13 @@ object ExportManager {
         projet: Projet,
         depenses: List<Depense>,
         parametres: Parametres = Parametres(),
+        plan: List<Justificatif> = planJustificatifs(slugProjet(projet.nom), depenses),
     ): List<XlsxWriter.Feuille> {
         val detail = XlsxWriter.Feuille("Dépenses")
-        detail.largeurs.addAll(listOf(12, 18, 30, 12, 8, 10, 12, 8, 12, 12, 10, 12, 46))
+        detail.largeurs.addAll(listOf(6, 12, 18, 30, 18, 12, 8, 10, 12, 8, 12, 12, 10, 12, 52))
         detail.ligne(
-            entete("Date"), entete("Type"), entete("Libellé"), entete("Montant"), entete("Devise"),
+            entete("N°"), entete("Date"), entete("Type"), entete("Libellé"), entete("Paiement"),
+            entete("Montant"), entete("Devise"),
             entete("Taux"), entete("Montant EUR"), entete("TVA %"), entete("HT EUR"), entete("TVA EUR"),
             entete("Distance km"), entete("Refacturable"),
             entete("Justificatif"),
@@ -166,23 +198,36 @@ object ExportManager {
         var totalTva = 0.0
         var totalKm = 0
         var totalRefacturable = 0.0
+        var nbJustificatifs = 0
         val parType = linkedMapOf<TypeDepense, Triple<Int, Double, Double>>()
+        val parPaiement = linkedMapOf<String, Pair<Int, Double>>()
 
-        for (d in depenses.sortedWith(compareBy({ it.date }, { it.creeLe }))) {
+        for (justificatif in plan) {
+            val d = justificatif.depense
             val eur = d.montantEurCentimes?.let { it / 100.0 }
             if (eur != null) totalEur += eur
             if (eur != null && d.refacturable) totalRefacturable += eur
             totalKm += d.distanceKm ?: 0
+            if (justificatif.noms.isNotEmpty()) nbJustificatifs++
             val tva = d.tvaCentimes?.let { it / 100.0 }
             if (tva != null) totalTva += tva
             val ht = d.htCentimes?.let { it / 100.0 }
             val courant = parType[d.typeDepense] ?: Triple(0, 0.0, 0.0)
             parType[d.typeDepense] = Triple(courant.first + 1, courant.second + (eur ?: 0.0), courant.third + (tva ?: 0.0))
+            val cle = d.moyenPaiement.ifBlank { "non renseigné" }
+            val cumul = parPaiement[cle] ?: (0 to 0.0)
+            parPaiement[cle] = (cumul.first + 1) to (cumul.second + (eur ?: 0.0))
 
             detail.ligne(
+                if (justificatif.numero > 0) {
+                    XlsxWriter.Cellule(nombre = justificatif.numero.toDouble())
+                } else {
+                    XlsxWriter.Cellule()
+                },
                 XlsxWriter.Cellule(texte = d.date),
                 XlsxWriter.Cellule(texte = d.typeDepense.label),
                 XlsxWriter.Cellule(texte = d.libelle),
+                XlsxWriter.Cellule(texte = d.moyenPaiement),
                 XlsxWriter.Cellule(nombre = d.montantCentimes / 100.0, style = XlsxWriter.MONTANT),
                 XlsxWriter.Cellule(texte = d.devise),
                 d.tauxChange?.let { XlsxWriter.Cellule(nombre = it, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),
@@ -192,25 +237,27 @@ object ExportManager {
                 tva?.let { XlsxWriter.Cellule(nombre = it, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),
                 d.distanceKm?.let { XlsxWriter.Cellule(nombre = it.toDouble()) } ?: XlsxWriter.Cellule(),
                 XlsxWriter.Cellule(texte = if (d.refacturable) "Oui" else ""),
-                XlsxWriter.Cellule(texte = d.fichier?.let { nomJustificatif(slugProjet(projet.nom), d) } ?: ""),
+                // The names exactly as they appear in the archive, annexes included.
+                XlsxWriter.Cellule(texte = justificatif.noms.joinToString(" ; ")),
             )
         }
 
         detail.ligne()
         detail.ligne(
-            entete("TOTAL"), XlsxWriter.Cellule(), XlsxWriter.Cellule(),
+            entete("TOTAL"), XlsxWriter.Cellule(), XlsxWriter.Cellule(), XlsxWriter.Cellule(),
             XlsxWriter.Cellule(), XlsxWriter.Cellule(), XlsxWriter.Cellule(),
+            XlsxWriter.Cellule(),
             XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT),
             XlsxWriter.Cellule(),
             XlsxWriter.Cellule(),
             XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.GRAS_MONTANT),
             XlsxWriter.Cellule(nombre = totalKm.toDouble()),
             XlsxWriter.Cellule(),
-            XlsxWriter.Cellule(texte = "${depenses.size} dépense(s)"),
+            XlsxWriter.Cellule(texte = "$nbJustificatifs justificatif(s) pour ${plan.size} dépense(s)"),
         )
 
         val synthese = XlsxWriter.Feuille("Synthèse")
-        synthese.largeurs.addAll(listOf(20, 10, 14, 12))
+        synthese.largeurs.addAll(listOf(24, 10, 14, 12))
         synthese.ligne(entete("Projet"), XlsxWriter.Cellule(texte = projet.nom))
         if (parametres.societe.isNotBlank()) {
             synthese.ligne(entete("Société"), XlsxWriter.Cellule(texte = parametres.societe))
@@ -218,7 +265,8 @@ object ExportManager {
         if (parametres.identite.isNotBlank()) {
             synthese.ligne(entete("Titulaire"), XlsxWriter.Cellule(texte = parametres.identite))
         }
-        synthese.ligne(entete("Dépenses"), XlsxWriter.Cellule(nombre = depenses.size.toDouble()))
+        synthese.ligne(entete("Dépenses"), XlsxWriter.Cellule(nombre = plan.size.toDouble()))
+        synthese.ligne(entete("Justificatifs"), XlsxWriter.Cellule(nombre = nbJustificatifs.toDouble()))
         synthese.ligne(entete("Total EUR"), XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT))
         synthese.ligne(entete("Dont TVA"), XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.MONTANT))
         synthese.ligne(entete("Édité le"), XlsxWriter.Cellule(texte = LocalDate.now().toString()))
@@ -234,6 +282,17 @@ object ExportManager {
                 XlsxWriter.Cellule(nombre = valeurs.first.toDouble()),
                 XlsxWriter.Cellule(nombre = valeurs.second, style = XlsxWriter.MONTANT),
                 XlsxWriter.Cellule(nombre = valeurs.third, style = XlsxWriter.MONTANT),
+            )
+        }
+
+        // Which card was charged: the statement total by card.
+        synthese.ligne()
+        synthese.ligne(entete("Paiement"), entete("Nombre"), entete("Total EUR"))
+        for ((moyen, valeurs) in parPaiement) {
+            synthese.ligne(
+                XlsxWriter.Cellule(texte = moyen),
+                XlsxWriter.Cellule(nombre = valeurs.first.toDouble()),
+                XlsxWriter.Cellule(nombre = valeurs.second, style = XlsxWriter.MONTANT),
             )
         }
 

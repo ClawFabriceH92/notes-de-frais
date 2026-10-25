@@ -62,7 +62,7 @@ interface NotesDao {
     suspend fun compterFichier(fichier: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class], version = 3, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class], version = 4, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
 
@@ -93,12 +93,18 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE depenses ADD COLUMN moyenPaiement TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 NotesDb::class.java,
                 "notes-de-frais.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
         }
 
         /** Closes the database so a restore can replace the file on disk. */

@@ -1,6 +1,7 @@
 package com.trucdecomptable.notesdefrais.data
 
 import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -29,6 +30,10 @@ data class Parametres(
     val zoneParis: Boolean = false,
     /** SHA-256 of the access code, empty when the app is not locked. */
     val codeAccesHash: String = "",
+    /** Cards and other ways to pay, as Fabrice names them ("CB BNP", "CB perso"). */
+    val moyensPaiement: List<String> = MOYENS_PAIEMENT_DEFAUT,
+    /** Pre-selected in the expense form; empty means "nothing pre-selected". */
+    val moyenPaiementDefaut: String = MOYENS_PAIEMENT_DEFAUT.first(),
 ) {
     val verrouillageActif: Boolean get() = codeAccesHash.isNotBlank()
 
@@ -63,9 +68,14 @@ data class Parametres(
         put("tvaDefautBp", tvaDefautBp)
         put("zoneParis", zoneParis)
         put("codeAccesHash", codeAccesHash)
+        put("moyensPaiement", JSONArray(moyensPaiement))
+        put("moyenPaiementDefaut", moyenPaiementDefaut)
     }
 
     companion object {
+        /** Enough to be usable on the first launch; renamed in the settings. */
+        val MOYENS_PAIEMENT_DEFAUT = listOf("CB", "Espèces")
+
         fun depuisJson(json: JSONObject): Parametres = Parametres(
             nom = json.optString("nom", ""),
             prenom = json.optString("prenom", ""),
@@ -82,6 +92,12 @@ data class Parametres(
             tvaDefautBp = json.optInt("tvaDefautBp", 2000),
             zoneParis = json.optBoolean("zoneParis", false),
             codeAccesHash = json.optString("codeAccesHash", ""),
+            moyensPaiement = json.optJSONArray("moyensPaiement")?.let { tableau ->
+                (0 until tableau.length())
+                    .mapNotNull { tableau.optString(it).trim().takeIf(String::isNotEmpty) }
+                    .distinct()
+            } ?: MOYENS_PAIEMENT_DEFAUT,
+            moyenPaiementDefaut = json.optString("moyenPaiementDefaut", MOYENS_PAIEMENT_DEFAUT.first()),
         )
     }
 }

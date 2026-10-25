@@ -31,11 +31,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.trucdecomptable.notesdefrais.data.Parametres
 import com.trucdecomptable.notesdefrais.update.UpdateManager
 import com.trucdecomptable.notesdefrais.util.Diag
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.io.File
 
 /** Whole app: projects, project detail, settings, dialogs and the update prompt. */
 @Composable
-fun Racine(vm: NotesViewModel = viewModel()) {
+fun Racine(
+    partages: StateFlow<List<Uri>> = MutableStateFlow(emptyList()),
+    onPartagesLus: () -> Unit = {},
+    vm: NotesViewModel = viewModel(),
+) {
     val context = LocalContext.current
 
     val projets by vm.projets.collectAsStateWithLifecycle()
@@ -61,12 +67,20 @@ fun Racine(vm: NotesViewModel = viewModel()) {
     ) { reussi -> if (reussi) uriPhoto?.let(vm::traiterJustificatif) }
 
     val launcherGalerie = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent(),
+        ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let(vm::traiterJustificatif) }
 
     val launcherRestauration = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
     ) { uri -> uri?.let(vm::restaurer) }
+
+    // A file shared from another app: PDF, photo, or several at once.
+    val fichiersPartages by partages.collectAsStateWithLifecycle()
+    LaunchedEffect(fichiersPartages) {
+        if (fichiersPartages.isEmpty()) return@LaunchedEffect
+        vm.recevoirPartage(fichiersPartages)
+        onPartagesLus()
+    }
 
     fun prendrePhoto() {
         val dossier = File(context.cacheDir, "photos").apply { mkdirs() }
@@ -186,7 +200,7 @@ fun Racine(vm: NotesViewModel = viewModel()) {
                 traitement = traitement,
                 onRetour = vm::fermerProjet,
                 onPhoto = ::prendrePhoto,
-                onGalerie = { launcherGalerie.launch("image/*") },
+                onGalerie = { launcherGalerie.launch(arrayOf("image/*", "application/pdf")) },
                 onManuel = vm::ajouterManuellement,
                 onExport = vm::exporter,
                 onOuvrirDepense = vm::editer,
@@ -206,6 +220,7 @@ fun Racine(vm: NotesViewModel = viewModel()) {
             onAnnuler = vm::fermerEditeur,
             onValider = vm::validerBrouillon,
             tauxPour = vm::tauxBdf,
+            moyensPaiement = parametres.moyensPaiement,
         )
     }
 
@@ -217,6 +232,7 @@ fun Racine(vm: NotesViewModel = viewModel()) {
             onSupprimer = { vm.supprimerDepense(it); vm.fermerEditeur() },
             tauxPour = vm::tauxBdf,
             onAjouterPiece = { uri -> vm.ajouterPieceJointe(initiale, uri) },
+            moyensPaiement = parametres.moyensPaiement,
         )
     }
 

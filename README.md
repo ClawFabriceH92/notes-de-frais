@@ -6,12 +6,22 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
 ## Périmètre validé
 
 - **Projets** : nom libre, on passe de l'un à l'autre, renommage et suppression.
-- **Capture** : appareil photo ou fichier existant (PDF accepté).
+- **Capture** : appareil photo, fichier existant (photo **ou PDF**), ou
+  **partage depuis une autre app** (mail, galerie, boutique) : le fichier arrive
+  directement dans le projet ouvert, et attend le choix d'un projet si aucun
+  n'est ouvert. Plusieurs fichiers partagés d'un coup sont acceptés.
 - **Extraction 100 % locale** (ML Kit, hors ligne, aucune donnée envoyée) :
-  date, montant TTC, type de dépense, taux de TVA, devise.
+  date, montant TTC, type de dépense, taux de TVA, devise. Un PDF est rendu page
+  par page (3 pages au plus) avant lecture, puisque le moteur ne lit que des
+  images ; s'il est protégé ou abîmé, le formulaire s'ouvre et le fichier reste
+  joint.
 - **Enregistrement direct** quand la date et le montant sont trouvés ; sinon le
   formulaire s'ouvre avec ce qui a été lu, et les champs manquants en clair.
 - **Types** : avion, hôtel, train, taxi, restaurant midi, restaurant soir, autres.
+- **Mode de paiement** par dépense : les cartes et autres moyens sont nommés
+  dans le paramétrage (plusieurs CB, espèces, virement…), un moyen par défaut
+  est proposé sur chaque nouvelle dépense, et le total par moyen apparaît dans
+  la synthèse de l'export.
 - **Devises** : EUR, USD, GBP, CHF avec le taux de la **Banque de France**
   (série BCE), récupéré depuis https://trucdecomptable.fr/taux-devises-bdf.json
   à la **date de la dépense** (repli sur la dernière parité publiée, week-end
@@ -31,10 +41,14 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   paramétrage), créée à la demande et **automatiquement avant chaque mise à
   jour**, partageable par mail ou vers Drive.
 - **Export ZIP par projet** :
-  - `recap.xlsx` : feuille « Dépenses » (détail + total) et feuille « Synthèse »
-    (par type, dont TVA) ;
+  - `recap.xlsx` : feuille « Dépenses » (détail + total, une colonne « N° » qui
+    numérote les justificatifs dans l'ordre du ZIP, une colonne « Paiement » et
+    le **nom exact du fichier joint**, annexes comprises) et feuille « Synthèse »
+    (par type, par moyen de paiement, dont TVA) ;
   - un PDF par dépense, nommé `Projet_AAAA-MM-JJ_type_montantDEVISE.pdf`,
-    par exemple `Mission_Paris_2026-10-12_hotel_248.50EUR.pdf`.
+    par exemple `Mission_Paris_2026-10-12_hotel_248.50EUR.pdf`. Les pièces
+    supplémentaires suivent en `_annexe2`, `_annexe3`… et deux dépenses qui
+    donneraient le même nom sont suffixées `_2`.
 
 ## Taux de change (trucdecomptable.fr)
 
@@ -87,11 +101,12 @@ Secrets CI : `NOTESDEFRAIS_KEYSTORE_B64`, `NOTESDEFRAIS_KEYSTORE_PASSWORD`,
 
 ## Tests
 
-60 tests unitaires JVM : lecture des tickets (12 formats), générateur xlsx
-(vérifié en dézippant le classeur), nommage des PDF, conversion de devises,
-ventilation TVA, barème kilométrique 2026 (exemples officiels de
-l'administration), plafonds d'exonération URSSAF 2026, détection de doublons,
-comparaison de versions et lecture du manifeste de MAJ.
+66 tests unitaires JVM : lecture des tickets (12 formats), générateur xlsx
+(vérifié en dézippant le classeur), nommage et numérotation des justificatifs,
+conversion de devises, ventilation TVA, barème kilométrique 2026 (exemples
+officiels de l'administration), plafonds d'exonération URSSAF 2026, détection de
+doublons, comparaison de versions et lecture du manifeste de MAJ, paramétrage des
+moyens de paiement.
 
 ## Technique
 
