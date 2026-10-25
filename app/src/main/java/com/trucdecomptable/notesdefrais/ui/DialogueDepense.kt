@@ -77,6 +77,7 @@ fun DialogueDepense(
     var choixDate by remember { mutableStateOf(false) }
     var refacturable by remember { mutableStateOf(initiale.refacturable) }
     var tauxBdf by remember { mutableStateOf<TauxBdf.Taux?>(null) }
+    var apercu by remember { mutableStateOf<String?>(null) }
 
     val launcherPiece = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.GetContent(),
@@ -222,6 +223,16 @@ fun DialogueDepense(
                     Text("Refacturable au client", style = MaterialTheme.typography.bodyMedium)
                 }
 
+                val pieces = initiale.tousLesFichiers
+                if (pieces.isNotEmpty()) {
+                    Text("Pièces jointes", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pieces.forEach { nom ->
+                            VignettePiece(nom, taille = 64.dp) { apercu = nom }
+                        }
+                    }
+                }
+
                 if (initiale.id != 0L && onAjouterPiece != null) {
                     TextButton(onClick = { launcherPiece.launch("image/*") }) {
                         Text(
@@ -260,6 +271,8 @@ fun DialogueDepense(
             }
         },
     )
+
+    apercu?.let { nom -> ApercuPiece(nom) { apercu = null } }
 
     if (choixDate) {
         val etat = rememberDatePickerState(

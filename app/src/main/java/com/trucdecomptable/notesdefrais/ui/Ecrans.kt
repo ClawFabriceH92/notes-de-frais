@@ -361,6 +361,7 @@ fun EcranProjet(
 
 @Composable
 private fun LigneDepense(depense: Depense, onClick: () -> Unit) {
+    var apercu by remember { mutableStateOf<String?>(null) }
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -370,6 +371,13 @@ private fun LigneDepense(depense: Depense, onClick: () -> Unit) {
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            depense.tousLesFichiers.firstOrNull()?.let { nom ->
+                VignettePiece(
+                    nom = nom,
+                    taille = 48.dp,
+                    modifier = Modifier.padding(end = 12.dp),
+                ) { apercu = nom }
+            }
             Column(Modifier.weight(1f)) {
                 Text(depense.typeDepense.label, style = MaterialTheme.typography.titleSmall)
                 Text(
@@ -397,6 +405,7 @@ private fun LigneDepense(depense: Depense, onClick: () -> Unit) {
             }
         }
     }
+    apercu?.let { nom -> ApercuPiece(nom) { apercu = null } }
 }
 
 @Composable

@@ -24,6 +24,9 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   barème fiscal 2026 (voiture, moto, cyclomoteur ; électrique majoré de 20 %),
   péages et stationnement en supplément, et une **feuille de route PDF** est
   générée comme justificatif.
+- **Pièces jointes visibles** : vignette de la photo dans la liste des dépenses
+  et dans la fiche de la dépense, plein écran au toucher, bouton « Ouvrir avec… »
+  pour les PDF, et pièces multiples par dépense.
 - **Sauvegarde et restauration** : archive complète (base, justificatifs,
   paramétrage), créée à la demande et **automatiquement avant chaque mise à
   jour**, partageable par mail ou vers Drive.
