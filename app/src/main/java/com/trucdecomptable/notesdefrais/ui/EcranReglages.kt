@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -198,7 +197,7 @@ fun EcranReglages(
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CategorieVehicule.entries.forEach { c ->
-                    FilterChip(selected = categorie == c, onClick = { categorie = c }, label = { Text(c.label) })
+                    PuceChoix(selected = categorie == c, onClick = { categorie = c }, label = { Text(c.label) })
                 }
             }
             OutlinedTextField(
@@ -232,13 +231,13 @@ fun EcranReglages(
             Text("Devise", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("EUR", "USD", "GBP", "CHF").forEach { code ->
-                    FilterChip(selected = devise == code, onClick = { devise = code }, label = { Text(code) })
+                    PuceChoix(selected = devise == code, onClick = { devise = code }, label = { Text(code) })
                 }
             }
             Text("Taux de TVA", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(2000 to "20 %", 1000 to "10 %", 550 to "5,5 %", 0 to "Aucun").forEach { (bp, texte) ->
-                    FilterChip(selected = tauxTva == bp, onClick = { tauxTva = bp }, label = { Text(texte) })
+                    PuceChoix(selected = tauxTva == bp, onClick = { tauxTva = bp }, label = { Text(texte) })
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -268,7 +267,7 @@ fun EcranReglages(
             )
             moyens.forEach { moyen ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(
+                    PuceChoix(
                         selected = paiementDefaut == moyen,
                         onClick = { paiementDefaut = if (paiementDefaut == moyen) "" else moyen },
                         label = { Text(moyen) },
@@ -372,6 +371,7 @@ fun EcranReglages(
     profilEdite?.let { profil ->
         DialogueProfil(
             initial = profil,
+            moyens = moyens,
             chercherSiret = chercherSiret,
             onAnnuler = { profilEdite = null },
             onValider = { retenu ->
@@ -387,9 +387,11 @@ fun EcranReglages(
  * saisie (clé de Luhn) et il remplit la raison sociale et l'adresse via
  * l'annuaire des entreprises, plutôt que de les faire recopier.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DialogueProfil(
     initial: Profil,
+    moyens: List<String>,
     chercherSiret: suspend (String) -> AnnuaireEntreprises.Info?,
     onAnnuler: () -> Unit,
     onValider: (Profil) -> Unit,
@@ -398,6 +400,7 @@ private fun DialogueProfil(
     var siret by remember { mutableStateOf(initial.siret) }
     var adresse by remember { mutableStateOf(initial.adresse) }
     var email by remember { mutableStateOf(initial.emailDestinataire) }
+    var paiement by remember { mutableStateOf(initial.moyenPaiementDefaut) }
     var recherche by remember { mutableStateOf(false) }
     var retour by remember { mutableStateOf<String?>(null) }
     val portee = androidx.compose.runtime.rememberCoroutineScope()
@@ -461,6 +464,24 @@ private fun DialogueProfil(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                // Le moyen de paiement par défaut appartient à la société : la
+                // carte d'une société ne sert pas à l'autre.
+                if (moyens.isNotEmpty()) {
+                    Text("Moyen de paiement par défaut", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        moyens.forEach { moyen ->
+                            PuceChoix(
+                                selected = paiement == moyen,
+                                onClick = { paiement = if (paiement == moyen) "" else moyen },
+                                label = { Text(moyen) },
+                            )
+                        }
+                    }
+                    Text(
+                        "Aucune puce choisie : le moyen par défaut du paramétrage général s'applique.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         },
         confirmButton = {
@@ -473,6 +494,7 @@ private fun DialogueProfil(
                             siret = siret.trim(),
                             adresse = adresse.trim(),
                             emailDestinataire = email.trim(),
+                            moyenPaiementDefaut = paiement.trim(),
                         ),
                     )
                 },

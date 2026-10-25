@@ -114,6 +114,20 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun chercherSiret(siret: String): AnnuaireEntreprises.Info? =
         AnnuaireEntreprises.chercher(siret)
 
+    /**
+     * Moyen de paiement proposé sur une nouvelle dépense : celui de la société
+     * en cours, sinon celui du paramétrage général.
+     */
+    private suspend fun moyenPaiementParDefaut(): String {
+        val id = _profilCourant.value
+        if (id > 0L) {
+            profilsDao.profil(id)?.moyenPaiementDefaut
+                ?.takeIf { it.isNotBlank() }
+                ?.let { return it }
+        }
+        return _parametres.value.moyenPaiementDefaut
+    }
+
     fun enregistrerParametres(nouveaux: Parametres) {
         parametresStore.ecrire(nouveaux)
         _parametres.value = nouveaux
@@ -538,7 +552,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 tvaTauxBp = champs.tvaTauxBp,
                 fichier = fichier.name,
                 texteOcr = texte,
-                moyenPaiement = _parametres.value.moyenPaiementDefaut,
+                moyenPaiement = moyenPaiementParDefaut(),
             )
 
             if (champs.complet) {
@@ -575,16 +589,18 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun ajouterManuellement() {
         val projet = _projet.value ?: return
-        val p = _parametres.value
-        _brouillon.value = Depense(
-            projetId = projet.id,
-            date = LocalDate.now().toString(),
-            montantCentimes = 0L,
-            devise = p.deviseDefaut,
-            type = TypeDepense.AUTRE.name,
-            tvaTauxBp = p.tvaDefautBp.takeIf { it > 0 },
-            moyenPaiement = p.moyenPaiementDefaut,
-        )
+        viewModelScope.launch {
+            val p = _parametres.value
+            _brouillon.value = Depense(
+                projetId = projet.id,
+                date = LocalDate.now().toString(),
+                montantCentimes = 0L,
+                devise = p.deviseDefaut,
+                type = TypeDepense.AUTRE.name,
+                tvaTauxBp = p.tvaDefautBp.takeIf { it > 0 },
+                moyenPaiement = moyenPaiementParDefaut(),
+            )
+        }
     }
 
     fun validerBrouillon(depense: Depense) {

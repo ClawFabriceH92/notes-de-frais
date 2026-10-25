@@ -20,7 +20,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -151,7 +150,7 @@ fun DialogueDepense(
                 Text("Devise", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DEVISES.forEach { code ->
-                        FilterChip(
+                        PuceChoix(
                             selected = devise == code,
                             onClick = { devise = code },
                             label = { Text(code) },
@@ -193,7 +192,7 @@ fun DialogueDepense(
                 Text("Type de dépense", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TypeDepense.entries.forEach { t ->
-                        FilterChip(
+                        PuceChoix(
                             selected = type == t,
                             onClick = { type = t },
                             label = { Text(t.label) },
@@ -207,7 +206,7 @@ fun DialogueDepense(
                     Text("Trajet", style = MaterialTheme.typography.labelLarge)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SensTrajet.entries.forEach { option ->
-                            FilterChip(
+                            PuceChoix(
                                 selected = sens == option.name,
                                 onClick = { sens = if (sens == option.name) "" else option.name },
                                 label = { Text(option.label) },
@@ -261,7 +260,7 @@ fun DialogueDepense(
                 } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         options.forEach { moyen ->
-                            FilterChip(
+                            PuceChoix(
                                 selected = paiement == moyen,
                                 onClick = { paiement = if (paiement == moyen) "" else moyen },
                                 label = { Text(moyen) },
@@ -282,7 +281,7 @@ fun DialogueDepense(
                 if (ventiler) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TAUX_TVA.forEach { (bp, texte) ->
-                            FilterChip(
+                            PuceChoix(
                                 selected = tauxTva == bp,
                                 onClick = { tauxTva = bp },
                                 label = { Text(texte) },

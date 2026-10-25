@@ -206,7 +206,7 @@ object ReceiptParser {
             contient("RESTAURANT", "BRASSERIE", "BISTROT", "RESTO", "PIZZERIA", "SUSHI", "MENU",
                 "REPAS", "RÉPAS", "COUVERT", "SERVEUR", "TABLE ", "ENTRECOTE", "ENTRECÔTE", "PLAT ",
                 "DESSERT", "CAFE ", "CAFÉ ")
-                -> if (heure != null && heure >= 16) TypeDepense.RESTAURANT_SOIR else TypeDepense.RESTAURANT_MIDI
+                -> if (heure != null && heure >= 16) TypeDepense.RESTAURANT_SOIR else TypeDepense.RESTAURANT_MIDI_SEUL
 
             // A plain "TRAIN"/"AVION" mention is weaker evidence but still evidence.
             contient("TRAIN", "BILLET") -> TypeDepense.TRAIN

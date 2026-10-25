@@ -70,7 +70,7 @@ interface NotesDao {
     suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class, Profil::class], version = 5, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class, Profil::class], version = 7, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
     abstract fun profilsDao(): ProfilsDao
@@ -127,12 +127,32 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        /**
+         * Les repas se séparent en « midi seul » et « midi avec invité » : les
+         * dépenses déjà saisies deviennent « midi seul », ce qui est le cas le
+         * plus fréquent et ne change pas leur montant.
+         */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("UPDATE depenses SET type = 'RESTAURANT_MIDI_SEUL' WHERE type = 'RESTAURANT_MIDI'")
+            }
+        }
+
+        /** Chaque société peut avoir son propre moyen de paiement par défaut. */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE profils ADD COLUMN moyenPaiementDefaut TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 NotesDb::class.java,
                 "notes-de-frais.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
+            ).addMigrations(
+                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
+            ).build().also { instance = it }
         }
 
         /** Closes the database so a restore can replace the file on disk. */

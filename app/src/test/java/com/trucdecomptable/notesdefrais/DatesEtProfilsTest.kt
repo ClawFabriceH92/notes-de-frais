@@ -63,7 +63,7 @@ class DatesEtProfilsTest {
             projetId = 1,
             date = "2026-10-12",
             montantCentimes = 6500,
-            type = TypeDepense.RESTAURANT_MIDI.name,
+            type = TypeDepense.RESTAURANT_MIDI_SEUL.name,
             participants = "Jean Dupont",
             societeParticipant = "Client SARL",
             motifRepas = "Revue des comptes annuels",
@@ -81,7 +81,7 @@ class DatesEtProfilsTest {
                 projetId = 1,
                 date = "2026-10-12",
                 montantCentimes = 12000,
-                type = TypeDepense.RESTAURANT_MIDI.name,
+                type = TypeDepense.RESTAURANT_MIDI_SEUL.name,
                 participants = "Jean Dupont",
                 societeParticipant = "Client SARL",
                 motifRepas = "Revue des comptes",
@@ -121,6 +121,36 @@ class DatesEtProfilsTest {
         assertTrue(AnnuaireEntreprises.valide("98830048900016"))
         assertFalse(AnnuaireEntreprises.valide("98830048900017"))
         assertFalse(AnnuaireEntreprises.valide("12345"))
+    }
+
+
+    @Test
+    fun `les nouvelles categories ont des slugs uniques`() {
+        val slugs = TypeDepense.entries.map { it.slug }
+        assertEquals(slugs.size, slugs.toSet().size)
+        assertEquals(TypeDepense.ESSENCE, TypeDepense.fromSlug("essence"))
+        assertEquals(TypeDepense.PEAGE, TypeDepense.fromSlug("peage"))
+        assertEquals(TypeDepense.LOCATION_VOITURE, TypeDepense.fromSlug("location-voiture"))
+        assertEquals(TypeDepense.RESTAURANT_MIDI_INVITE, TypeDepense.fromSlug("repas-midi-invite"))
+        // Une ancienne valeur « restaurant midi » ne casse rien : elle retombe sur Autres.
+        assertEquals(TypeDepense.AUTRE, TypeDepense.fromName("RESTAURANT_MIDI"))
+    }
+
+    @Test
+    fun `les trois repas ont le meme plafond et demande les invites`() {
+        listOf(
+            TypeDepense.RESTAURANT_MIDI_SEUL,
+            TypeDepense.RESTAURANT_MIDI_INVITE,
+            TypeDepense.RESTAURANT_SOIR,
+        ).forEach { type ->
+            val depense = Depense(projetId = 1, date = "2026-10-12", montantCentimes = 2140, type = type.name)
+            assertTrue(depense.repasDemande)
+            assertEquals(2140L, com.trucdecomptable.notesdefrais.data.Plafonds.plafondCentimes(type, false))
+        }
+        // Essence, péage et location sont des frais réels : aucun plafond.
+        assertNull(com.trucdecomptable.notesdefrais.data.Plafonds.plafondCentimes(TypeDepense.ESSENCE, false))
+        assertNull(com.trucdecomptable.notesdefrais.data.Plafonds.plafondCentimes(TypeDepense.PEAGE, false))
+        assertNull(com.trucdecomptable.notesdefrais.data.Plafonds.plafondCentimes(TypeDepense.LOCATION_VOITURE, false))
     }
 
     private fun unzip(octets: ByteArray): Map<String, String> {

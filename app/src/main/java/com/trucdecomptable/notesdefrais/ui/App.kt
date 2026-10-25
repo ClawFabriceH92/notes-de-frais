@@ -256,6 +256,8 @@ fun Racine(
                 },
                 onIndemniteKm = { indemnite = true },
                 onRecadrerPiece = vm::recadrerPiece,
+                societe = profils.firstOrNull { it.id == courant.profilId }?.nom
+                    ?: parametres.societe.takeIf { it.isNotBlank() },
             )
         }
 

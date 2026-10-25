@@ -11,13 +11,17 @@ import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
 import java.math.RoundingMode
 
-/** The seven expense types Fabrice asked for, each with a slug used in file names. */
+/** The expense types Fabrice asked for, each with a slug used in file names. */
 enum class TypeDepense(val label: String, val slug: String) {
     AVION("Avion", "avion"),
-    HOTEL("Hôtel", "hotel"),
     TRAIN("Train", "train"),
     TAXI("Taxi", "taxi"),
-    RESTAURANT_MIDI("Restaurant midi", "restaurant-midi"),
+    LOCATION_VOITURE("Location voiture", "location-voiture"),
+    ESSENCE("Essence", "essence"),
+    PEAGE("Péage", "peage"),
+    HOTEL("Hôtel", "hotel"),
+    RESTAURANT_MIDI_SEUL("Repas midi seul", "repas-midi-seul"),
+    RESTAURANT_MIDI_INVITE("Repas midi avec invité", "repas-midi-invite"),
     RESTAURANT_SOIR("Restaurant soir", "restaurant-soir"),
     INDENNITE_KM("Indemnité km", "indemnite-km"),
     AUTRE("Autres", "autres");
@@ -51,6 +55,11 @@ data class Profil(
     val adresse: String = "",
     /** Destinataire des exports pour cette société ; vide = celui du paramétrage. */
     val emailDestinataire: String = "",
+    /**
+     * Moyen de paiement proposé par défaut sur les dépenses de cette société ;
+     * vide = celui du paramétrage général.
+     */
+    val moyenPaiementDefaut: String = "",
     val creeLe: Long = System.currentTimeMillis(),
 )
 
@@ -156,7 +165,9 @@ data class Depense(
 
     /** A meal needs its guests and its purpose to be deductible. */
     val repasDemande: Boolean
-        get() = typeDepense == TypeDepense.RESTAURANT_MIDI || typeDepense == TypeDepense.RESTAURANT_SOIR
+        get() = typeDepense == TypeDepense.RESTAURANT_MIDI_SEUL ||
+            typeDepense == TypeDepense.RESTAURANT_MIDI_INVITE ||
+            typeDepense == TypeDepense.RESTAURANT_SOIR
 
     val sens: SensTrajet? get() = SensTrajet.fromName(sensTrajet)
 

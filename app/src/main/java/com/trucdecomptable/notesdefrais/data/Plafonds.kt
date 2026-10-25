@@ -30,9 +30,14 @@ object Plafonds {
 
     /** Ceiling that applies to an expense, null when it has none. */
     fun plafondCentimes(type: TypeDepense, zoneParis: Boolean): Long? = when (type) {
-        TypeDepense.RESTAURANT_MIDI, TypeDepense.RESTAURANT_SOIR -> REPAS_RESTAURANT
+        TypeDepense.RESTAURANT_MIDI_SEUL,
+        TypeDepense.RESTAURANT_MIDI_INVITE,
+        TypeDepense.RESTAURANT_SOIR,
+        -> REPAS_RESTAURANT
+
         TypeDepense.HOTEL -> if (zoneParis) NUITEE_PARIS else NUITEE_PROVINCE
-        // Transport, taxi, train, avion, indemnités : frais réels sur justificatif.
+        // Transport, taxi, train, avion, essence, péage, location, indemnités :
+        // frais réels sur justificatif, sans plafond d'exonération.
         else -> null
     }
 

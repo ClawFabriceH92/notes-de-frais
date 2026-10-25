@@ -36,7 +36,7 @@ class ReceiptParserTest {
 
         assertEquals(2100L, champs.montantCentimes)
         assertEquals(recent, champs.date)
-        assertEquals(TypeDepense.RESTAURANT_MIDI, champs.type)
+        assertEquals(TypeDepense.RESTAURANT_MIDI_SEUL, champs.type)
         assertEquals(12, champs.heure)
         assertEquals(1000, champs.tvaTauxBp)
         assertEquals("EUR", champs.devise)

@@ -34,7 +34,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -261,13 +260,13 @@ private fun FlowRowAccueil(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        FilterChip(
+        PuceChoix(
             selected = courant == 0L,
             onClick = { onChoisir(0) },
             label = { Text("Toutes les sociétés") },
         )
         profils.forEach { profil ->
-            FilterChip(
+            PuceChoix(
                 selected = courant == profil.id,
                 onClick = { onChoisir(profil.id) },
                 label = { Text(profil.nom) },
@@ -360,6 +359,7 @@ fun EcranProjet(
     onOuvrirDepense: (Depense) -> Unit,
     onIndemniteKm: () -> Unit = {},
     onRecadrerPiece: (Depense, String, android.graphics.Bitmap) -> Unit = { _, _, _ -> },
+    societe: String? = null,
 ) {
     var menuAjout by remember { mutableStateOf(false) }
     var recherche by remember { mutableStateOf("") }
@@ -435,6 +435,13 @@ fun EcranProjet(
                         String.format(Locale.FRANCE, "%.2f €", totalEur),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
+                    )
+                    // La société à laquelle le projet est rattaché : c'est elle
+                    // qui apparaîtra sur l'export.
+                    Text(
+                        if (societe.isNullOrBlank()) "Aucune société affectée" else "Société : $societe",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         "${depenses.size} dépense(s)" +

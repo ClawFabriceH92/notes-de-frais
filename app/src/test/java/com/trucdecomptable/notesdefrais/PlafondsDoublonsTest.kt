@@ -19,7 +19,7 @@ class PlafondsDoublonsTest {
     private fun depense(
         id: Long = 0,
         montant: Long = 2000,
-        type: TypeDepense = TypeDepense.RESTAURANT_MIDI,
+        type: TypeDepense = TypeDepense.RESTAURANT_MIDI_SEUL,
         date: String = "2026-10-12",
         libelle: String = "",
         projetId: Long = 1,
@@ -34,7 +34,7 @@ class PlafondsDoublonsTest {
 
     @Test
     fun `plafonds 2026 des repas et de la nuitée`() {
-        assertEquals(2140L, Plafonds.plafondCentimes(TypeDepense.RESTAURANT_MIDI, false))
+        assertEquals(2140L, Plafonds.plafondCentimes(TypeDepense.RESTAURANT_MIDI_SEUL, false))
         assertEquals(2140L, Plafonds.plafondCentimes(TypeDepense.RESTAURANT_SOIR, true))
         assertEquals(5680L, Plafonds.plafondCentimes(TypeDepense.HOTEL, false))
         assertEquals(7660L, Plafonds.plafondCentimes(TypeDepense.HOTEL, true))

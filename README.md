@@ -17,7 +17,9 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   joint.
 - **Enregistrement direct** quand la date et le montant sont trouvés ; sinon le
   formulaire s'ouvre avec ce qui a été lu, et les champs manquants en clair.
-- **Types** : avion, hôtel, train, taxi, restaurant midi, restaurant soir, autres.
+- **Types** : avion, train, taxi, location de voiture, essence, péage, hôtel,
+  repas midi seul, repas midi avec invité, restaurant soir, indemnité km, autres.
+  Les dépenses « restaurant midi » d'avant la séparation deviennent « midi seul ».
 - **Train et avion** : un aller simple ou un aller-retour, à cocher sur la dépense.
 - **Repas** : nom et prénom des invités, leur société, motif du repas, pour que la
   dépense reste justifiée sur le plan fiscal.
@@ -29,8 +31,9 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   apparaît dans la synthèse de l'export.
 - **Profils de société** : une société par jeu de projets (deux cabinets, deux
   SARL…). L'écran Projets filtre sur la société choisie, l'export reprend son nom,
-  son SIRET, son adresse et son destinataire. Supprimer une société ne perd pas
-  ses projets : ils repassent en « sans société ».
+  son SIRET, son adresse et son destinataire, et **chaque société a son propre
+  moyen de paiement par défaut**. La société du projet est rappelée sous le total.
+  Supprimer une société ne perd pas ses projets : ils repassent en « sans société ».
 - **SIRET** : vérifié par sa clé, puis l'annuaire des entreprises
   (recherche-entreprises.api.gouv.fr) remplit la raison sociale et l'adresse.
 - **Devises** : EUR, USD, GBP, CHF avec le taux de la **Banque de France**
