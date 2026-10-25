@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -164,8 +165,11 @@ fun EcranReglages(
                         Modifier.weight(1f).clickable { profilEdite = profil }.padding(vertical = 6.dp),
                     ) {
                         Text(profil.nom, style = MaterialTheme.typography.titleSmall)
-                        val details = listOf(profil.siret, profil.adresse)
-                            .filter { it.isNotBlank() }.joinToString(" · ")
+                        val details = listOf(
+                            profil.siret,
+                            profil.adresse,
+                            profil.moyenPaiementDefaut.takeIf { it.isNotBlank() }?.let { "Paiement : $it" }.orEmpty(),
+                        ).filter { it.isNotBlank() }.joinToString(" · ")
                         if (details.isNotBlank()) {
                             Text(details, style = MaterialTheme.typography.bodySmall)
                         }
@@ -465,21 +469,70 @@ private fun DialogueProfil(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 // Le moyen de paiement par défaut appartient à la société : la
-                // carte d'une société ne sert pas à l'autre.
-                if (moyens.isNotEmpty()) {
-                    Text("Moyen de paiement par défaut", style = MaterialTheme.typography.labelLarge)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        moyens.forEach { moyen ->
-                            PuceChoix(
-                                selected = paiement == moyen,
-                                onClick = { paiement = if (paiement == moyen) "" else moyen },
-                                label = { Text(moyen) },
-                            )
-                        }
+                // carte d'une société ne sert pas à l'autre. Un choix explicite
+                // (liste à cocher) plutôt que des puces : on voit la valeur.
+                var choixPaiement by remember { mutableStateOf(false) }
+                Row(
+                    Modifier.fillMaxWidth().clickable { choixPaiement = true }.padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Moyen de paiement par défaut", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            paiement.ifBlank { "Aucun (celui du paramétrage général)" },
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                     }
-                    Text(
-                        "Aucune puce choisie : le moyen par défaut du paramétrage général s'applique.",
-                        style = MaterialTheme.typography.bodySmall,
+                    TextButton(onClick = { choixPaiement = true }) { Text("Choisir") }
+                }
+
+                if (choixPaiement) {
+                    AlertDialog(
+                        onDismissRequest = { choixPaiement = false },
+                        title = { Text("Moyen de paiement de la société") },
+                        text = {
+                            Column(Modifier.verticalScroll(rememberScrollState())) {
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .clickable { paiement = ""; choixPaiement = false }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    RadioButton(
+                                        selected = paiement.isBlank(),
+                                        onClick = { paiement = ""; choixPaiement = false },
+                                    )
+                                    Text(
+                                        "Aucun (celui du paramétrage général)",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
+                                moyens.forEach { moyen ->
+                                    Row(
+                                        Modifier.fillMaxWidth()
+                                            .clickable { paiement = moyen; choixPaiement = false }
+                                            .padding(vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        RadioButton(
+                                            selected = paiement == moyen,
+                                            onClick = { paiement = moyen; choixPaiement = false },
+                                        )
+                                        Text(moyen, style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                }
+                                if (moyens.isEmpty()) {
+                                    Text(
+                                        "Aucun moyen de paiement nommé : ajoute-les dans la section " +
+                                            "« Moyens de paiement » du paramétrage.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { choixPaiement = false }) { Text("Fermer") }
+                        },
                     )
                 }
             }
