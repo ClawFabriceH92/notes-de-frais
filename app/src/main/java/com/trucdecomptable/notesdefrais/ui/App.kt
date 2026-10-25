@@ -322,19 +322,19 @@ private fun DialogueMiseAJour(
 
         is UpdateManager.State.Downloading -> AlertDialog(
             onDismissRequest = {},
-            title = { Text("Téléchargement…") },
+            // Le pourcentage vit dans le TITRE : il reste lisible quelle que
+            // soit la place laissée par la barre.
+            title = { Text("Téléchargement… ${(etat.progress * 100).toInt()} %") },
             text = {
-                Column {
+                Column(Modifier.fillMaxWidth()) {
                     LinearProgressIndicator(
                         progress = { etat.progress },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     )
-                    // Le pourcentage sous la barre, avec de l'air : collé au
-                    // trait, il était illisible.
                     Text(
                         "${(etat.progress * 100).toInt()} % téléchargé",
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 12.dp),
+                        modifier = Modifier.padding(top = 20.dp),
                     )
                 }
             },
