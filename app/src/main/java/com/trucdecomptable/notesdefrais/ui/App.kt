@@ -140,7 +140,16 @@ fun Racine(vm: NotesViewModel = viewModel()) {
     }
 
     val etatMaj by UpdateManager.state.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { UpdateManager.checkAtLaunch("") }
+    // One check at launch, then again every 30 minutes while the app stays open:
+    // an app left running for days used to never look again. The manager keeps
+    // its own hourly floor, so the extra wake-ups cost one HTTP call an hour.
+    val contexteApp = context.applicationContext
+    LaunchedEffect(Unit) {
+        while (true) {
+            UpdateManager.checkAtLaunch(contexteApp, "")
+            kotlinx.coroutines.delay(30 * 60_000L)
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         val courant = projet
@@ -165,7 +174,7 @@ fun Racine(vm: NotesViewModel = viewModel()) {
                 onCreer = vm::creerProjet,
                 onRenommer = vm::renommerProjet,
                 onSupprimer = vm::supprimerProjet,
-                onVerifierMaj = { UpdateManager.checkNow() },
+                onVerifierMaj = { UpdateManager.checkNow(contexteApp) },
                 onReglages = { reglages = true },
                 onCloturer = vm::cloturerProjet,
                 onDupliquer = vm::dupliquerProjet,

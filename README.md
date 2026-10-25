@@ -59,6 +59,16 @@ Même mécanisme qu'ollamachat : le workflow publie une release roulante tag
 par heure de l'API GitHub), puis l'API en secours. Téléchargement direct avec
 vérification des octets `PK`, puis installation par FileProvider.
 
+**Quand la vérification tourne** : au démarrage, puis toutes les 30 minutes
+tant que l'app reste ouverte (plancher d'une heure côté `UpdateManager`), et à
+la demande via l'icône nuage de l'écran Projets.
+
+**Ce qui est automatique** : la détection, et le téléchargement de l'APK
+lorsque le réseau n'est pas facturé (Wi-Fi). Sur données mobiles, le
+téléchargement reste un bouton. L'installation, elle, demande toujours le tap
+« Installer » puis la confirmation Android : le système interdit une
+installation silencieuse.
+
 Le dépôt doit rester **public**, sinon les assets de release répondent 404.
 
 ## Build

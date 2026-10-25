@@ -1,6 +1,8 @@
 package com.trucdecomptable.notesdefrais.update
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import com.trucdecomptable.notesdefrais.BuildConfig
 import com.trucdecomptable.notesdefrais.util.Diag
@@ -52,47 +54,94 @@ object UpdateManager {
             .build()
     }
 
-    fun checkAtLaunch(skippedVersion: String) {
+    fun checkAtLaunch(context: Context?, skippedVersion: String) {
         if (BuildConfig.DEBUG) return
-        check(skippedVersion = skippedVersion, manual = false)
+        check(context, skippedVersion = skippedVersion, manual = false)
     }
 
-    fun checkNow() = check(skippedVersion = "", manual = true)
+    fun checkNow(context: Context? = null) = check(context, skippedVersion = "", manual = true)
 
     @Volatile
     private var lastCheckAt = UpdateSchedule.NEVER
 
-    private fun check(skippedVersion: String, manual: Boolean) {
+    private fun check(context: Context?, skippedVersion: String, manual: Boolean) {
         if (job?.isActive == true) return
         val now = System.currentTimeMillis()
         if (!UpdateSchedule.isDue(manual, lastCheckAt, now)) return
         lastCheckAt = now
         job = scope.launch {
-            _state.value = when (val result = UpdateChecker.check()) {
+            when (val result = UpdateChecker.check()) {
                 is UpdateChecker.CheckResult.Available -> {
                     val info = result.info
                     if (info.version == skippedVersion) {
                         Diag.record("update", "version ${info.version} écartée par l'utilisateur")
-                        State.Idle
-                    } else {
-                        Diag.record("update", "version ${info.version} disponible")
-                        State.Available(info.version, info.notes, info.apkUrl)
+                        _state.value = State.Idle
+                        return@launch
                     }
+                    Diag.record("update", "version ${info.version} disponible")
+                    _state.value = State.Available(info.version, info.notes, info.apkUrl)
+                    // A new version is only worth a dialog when installing it costs
+                    // a tap: on an unmetered network the APK is fetched right away,
+                    // so the user finds "Installer" waiting next time.
+                    if (!manual && context != null) preparerEnSilence(context, info.version, info.apkUrl)
                 }
 
                 UpdateChecker.CheckResult.UpToDate -> {
                     Diag.record("update", "aucune version plus récente que ${BuildConfig.VERSION_NAME}")
-                    if (manual) State.UpToDate(BuildConfig.VERSION_NAME) else State.Idle
+                    _state.value = if (manual) State.UpToDate(BuildConfig.VERSION_NAME) else State.Idle
                 }
 
                 is UpdateChecker.CheckResult.Unreachable -> {
                     Diag.record("update", UpdateChecker.logLine(result))
                     // A failed check must not hold the hourly slot.
                     lastCheckAt = UpdateSchedule.NEVER
-                    if (manual) State.Failed(result.reason) else State.Idle
+                    _state.value = if (manual) State.Failed(result.reason) else State.Idle
                 }
             }
         }
+    }
+
+    /**
+     * Downloads the update without being asked, but only over Wi-Fi / unmetered
+     * networks: pulling 55 MB from mobile data unannounced is not a favour.
+     * Everything else stays the explicit "Télécharger" button.
+     */
+    private suspend fun preparerEnSilence(context: Context, version: String, url: String) {
+        val dejaLa = fichierValide(context, version)
+        if (dejaLa != null) {
+            _state.value = State.ReadyToInstall(version, dejaLa)
+            return
+        }
+        if (!reseauNonFacture(context)) {
+            Diag.record("update", "téléchargement différé (réseau facturé) v$version")
+            return
+        }
+        _state.value = State.Downloading(version, 0f)
+        val result = runCatching { fetch(context, version, url) }
+        _state.value = result.fold(
+            onSuccess = { State.ReadyToInstall(version, it) },
+            onFailure = {
+                Diag.record("update", it)
+                State.Available(version, "", url)
+            },
+        )
+    }
+
+    private fun reseauNonFacture(context: Context): Boolean = runCatching {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val reseau = cm.activeNetwork ?: return false
+        val capacites = cm.getNetworkCapabilities(reseau) ?: return false
+        capacites.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capacites.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    }.getOrDefault(false)
+
+    /** The APK already on disk for [version], if it is a real one. */
+    private fun fichierValide(context: Context, version: String): File? {
+        val fichier = File(File(context.filesDir, DIR), "notes-de-frais-v$version.apk")
+        if (!fichier.exists() || fichier.length() == 0L) return null
+        val entete = ByteArray(2)
+        runCatching { fichier.inputStream().use { it.read(entete) } }.getOrNull()
+        return if (String(entete) == "PK") fichier else null
     }
 
     fun download(context: Context) {
