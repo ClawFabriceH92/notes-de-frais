@@ -82,6 +82,24 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Affecte un projet (donc ses dépenses) à une société. [tousLesSansSociete]
+     * range d'un coup les projets encore sans société : c'est la reprise des
+     * anciens projets après la création des profils.
+     */
+    fun affecterProfil(projet: Projet?, profilId: Long, tousLesSansSociete: Boolean = false) {
+        viewModelScope.launch {
+            if (tousLesSansSociete) {
+                val nombre = profilsDao.affecterProjetsSansSociete(profilId)
+                _message.value = "$nombre projet(s) affecté(s)"
+            } else if (projet != null) {
+                dao.majProjet(projet.copy(profilId = profilId))
+                if (_projet.value?.id == projet.id) _projet.value = projet.copy(profilId = profilId)
+                _message.value = "Projet affecté"
+            }
+        }
+    }
+
     /** Supprimer une société ne perd pas ses projets : ils repassent en « sans société ». */
     fun supprimerProfil(profil: Profil) {
         viewModelScope.launch {
@@ -134,6 +152,42 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sauvegardeConsommee() {
         _sauvegarde.value = null
+    }
+
+    /** Paramétrage et sociétés seuls, dans un JSON : les dépenses ne bougent pas. */
+    private val _fichierParametres = MutableStateFlow<File?>(null)
+    val fichierParametres: StateFlow<File?> = _fichierParametres.asStateFlow()
+
+    fun sauvegarderParametres() {
+        viewModelScope.launch {
+            runCatching { Sauvegarde.creerParametres(getApplication()) }
+                .onSuccess { fichier ->
+                    _fichierParametres.value = fichier
+                    _message.value = "Paramétrage prêt : ${fichier.name}"
+                }
+                .onFailure {
+                    Diag.record("sauvegarde/parametres", it)
+                    _message.value = "Sauvegarde impossible : ${it.message ?: "erreur"}"
+                }
+        }
+    }
+
+    fun fichierParametresConsomme() {
+        _fichierParametres.value = null
+    }
+
+    fun restaurerParametres(uri: Uri) {
+        viewModelScope.launch {
+            runCatching { Sauvegarde.restaurerParametres(getApplication(), uri) }
+                .onSuccess { resume ->
+                    _message.value = resume
+                    _parametres.value = parametresStore.lire()
+                }
+                .onFailure {
+                    Diag.record("restauration/parametres", it)
+                    _message.value = "Restauration impossible : ${it.message ?: "erreur"}"
+                }
+        }
     }
 
     /**
@@ -191,6 +245,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     val projets: StateFlow<List<Projet>> = _profilCourant
         .flatMapLatest { id -> dao.projetsDuProfil(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Tous les projets, sans filtre de société : sert au déplacement d'une dépense. */
+    val tousProjets: StateFlow<List<Projet>> = dao.projets()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _projet = MutableStateFlow<Projet?>(null)
@@ -562,6 +620,28 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun editer(depense: Depense) {
         _edition.value = depense
+    }
+
+    /**
+     * Déplace une dépense vers un autre projet : la pièce jointe et tout le
+     * détail suivent, seuls le rattachement et les contrôles de doublons
+     * changent. Refusé si le projet d'arrivée est clôturé (lecture seule).
+     */
+    fun deplacerDepense(depense: Depense, cible: Projet) {
+        if (cible.cloture) {
+            _message.value = "Projet clôturé : choisis un projet ouvert"
+            return
+        }
+        if (cible.id == depense.projetId) {
+            _message.value = "Dépense déjà dans « ${cible.nom} »"
+            return
+        }
+        viewModelScope.launch {
+            val deplacee = depense.copy(projetId = cible.id)
+            dao.majDepense(deplacee)
+            _edition.value = null
+            _message.value = "Dépense déplacée vers « ${cible.nom} »"
+        }
     }
 
     fun fermerEditeur() {

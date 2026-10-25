@@ -5,10 +5,12 @@ import android.net.Uri
 import com.trucdecomptable.notesdefrais.BuildConfig
 import com.trucdecomptable.notesdefrais.data.NotesDb
 import com.trucdecomptable.notesdefrais.data.ParametresStore
+import com.trucdecomptable.notesdefrais.data.Profil
 import com.trucdecomptable.notesdefrais.export.ExportManager
 import com.trucdecomptable.notesdefrais.util.Diag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.zip.ZipEntry
@@ -156,5 +158,88 @@ object Sauvegarde {
     suspend fun purger(context: Context, garder: Int = 10) = withContext(Dispatchers.IO) {
         val archives = dossier(context).listFiles()?.sortedByDescending { it.lastModified() }.orEmpty()
         archives.drop(garder).forEach { it.delete() }
+    }
+
+    // -------------------------------------------------- paramétrage seul
+
+    /**
+     * Le paramétrage et les sociétés, sans les dépenses : un petit JSON qu'on
+     * peut ranger dans un mail ou sur Drive, et remettre en place sur un autre
+     * téléphone sans écraser les notes de frais déjà saisies.
+     */
+    suspend fun creerParametres(context: Context): File = withContext(Dispatchers.IO) {
+        val store = ParametresStore(context)
+        val profils = NotesDb.get(context).profilsDao().tousLesProfils()
+        val racine = JSONObject().apply {
+            put("application", "notes-de-frais")
+            put("version", BuildConfig.VERSION_NAME)
+            put("date", java.time.LocalDateTime.now().toString())
+            put(
+                "parametres",
+                store.lireJson()?.let { runCatching { JSONObject(it) }.getOrNull() }
+                    ?: store.lire().toJson(),
+            )
+            put("profils", JSONArray().apply {
+                profils.forEach { profil ->
+                    put(
+                        JSONObject().apply {
+                            put("nom", profil.nom)
+                            put("siret", profil.siret)
+                            put("adresse", profil.adresse)
+                            put("emailDestinataire", profil.emailDestinataire)
+                        },
+                    )
+                }
+            })
+        }
+        val horodatage = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
+            .format(java.time.LocalDateTime.now())
+        val fichier = File(dossier(context), "parametrage-$horodatage.json")
+        fichier.writeText(racine.toString(2))
+        Diag.record("sauvegarde/parametres", "paramétrage seul : ${fichier.name} (${profils.size} société(s))")
+        fichier
+    }
+
+    /**
+     * Relit un fichier de paramétrage. Les sociétés sont rapprochées par nom et
+     * SIRET : une société déjà présente est mise à jour, les autres sont
+     * ajoutées, et celles qui ne sont pas dans le fichier restent en place.
+     * Aucune dépense, aucun projet n'est touché.
+     */
+    suspend fun restaurerParametres(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+        val brut = context.contentResolver.openInputStream(uri)?.use { flux ->
+            flux.readBytes().toString(Charsets.UTF_8)
+        } ?: error("Fichier illisible")
+        val racine = runCatching { JSONObject(brut) }.getOrElse { error("Ce fichier n'est pas un paramétrage Notes de frais") }
+
+        val parametres = racine.optJSONObject("parametres")
+            ?: error("Le fichier ne contient pas de paramétrage")
+        ParametresStore(context).ecrireJson(parametres.toString())
+
+        val dao = NotesDb.get(context).profilsDao()
+        val existants = dao.tousLesProfils()
+        var ajoutes = 0
+        var maj = 0
+        val profils = racine.optJSONArray("profils") ?: JSONArray()
+        for (index in 0 until profils.length()) {
+            val json = profils.optJSONObject(index) ?: continue
+            val nom = json.optString("nom").trim()
+            if (nom.isEmpty()) continue
+            val siret = json.optString("siret").trim()
+            val adresse = json.optString("adresse")
+            val email = json.optString("emailDestinataire")
+            val connu = existants.firstOrNull {
+                it.nom.equals(nom, ignoreCase = true) && it.siret == siret
+            }
+            if (connu != null) {
+                dao.maj(connu.copy(adresse = adresse, emailDestinataire = email))
+                maj++
+            } else {
+                dao.ajouter(Profil(nom = nom, siret = siret, adresse = adresse, emailDestinataire = email))
+                ajoutes++
+            }
+        }
+        Diag.record("restauration/parametres", "paramétrage restauré ($ajoutes ajoutée(s), $maj mise(s) à jour)")
+        "Paramétrage restauré : $ajoutes société(s) ajoutée(s), $maj mise(s) à jour. Les dépenses sont intactes."
     }
 }

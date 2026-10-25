@@ -1,6 +1,7 @@
 package com.trucdecomptable.notesdefrais.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -14,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -69,6 +71,8 @@ fun DialogueDepense(
     onAjouterPiece: ((android.net.Uri) -> Unit)? = null,
     moyensPaiement: List<String> = emptyList(),
     onRecadrerPiece: ((String, android.graphics.Bitmap) -> Unit)? = null,
+    projetsCibles: List<com.trucdecomptable.notesdefrais.data.Projet> = emptyList(),
+    onDeplacer: ((com.trucdecomptable.notesdefrais.data.Projet) -> Unit)? = null,
 ) {
     var date by remember { mutableStateOf(Dates.isoVersFr(initiale.date)) }
     var montant by remember { mutableStateOf(if (initiale.montantCentimes > 0) centimesVersTexte(initiale.montantCentimes) else "") }
@@ -87,6 +91,7 @@ fun DialogueDepense(
     var motifRepas by remember { mutableStateOf(initiale.motifRepas) }
     var tauxBdf by remember { mutableStateOf<TauxBdf.Taux?>(null) }
     var apercu by remember { mutableStateOf<String?>(null) }
+    var choixProjet by remember { mutableStateOf(false) }
 
     val launcherPiece = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
@@ -328,6 +333,13 @@ fun DialogueDepense(
                         )
                     }
                 }
+
+                // Déplacement vers un autre projet (jamais vers un projet clôturé).
+                if (initiale.id != 0L && onDeplacer != null && projetsCibles.isNotEmpty()) {
+                    TextButton(onClick = { choixProjet = true }) {
+                        Text("Déplacer vers un autre projet")
+                    }
+                }
             }
         },
         confirmButton = {
@@ -369,6 +381,42 @@ fun DialogueDepense(
             nom = nom,
             onFermer = { apercu = null },
             onRecadrer = { piece, bitmap -> onRecadrerPiece?.invoke(piece, bitmap) },
+        )
+    }
+
+    if (choixProjet) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { choixProjet = false },
+            title = { Text("Déplacer vers un projet") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        "La dépense, son montant et ses pièces jointes changent de projet. " +
+                            "Les projets clôturés ne sont pas proposés.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    projetsCibles.forEach { cible ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable {
+                                    choixProjet = false
+                                    onDeplacer?.invoke(cible)
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 10.dp),
+                            )
+                            Text(cible.nom, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { choixProjet = false }) { Text("Annuler") } },
         )
     }
 

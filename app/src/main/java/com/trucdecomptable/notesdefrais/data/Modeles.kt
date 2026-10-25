@@ -76,6 +76,10 @@ interface ProfilsDao {
 
     @Query("UPDATE projets SET profilId = :profilId WHERE profilId = :ancien")
     suspend fun transfererProjets(ancien: Long, profilId: Long)
+
+    /** Migration en masse : tous les projets encore sans société. */
+    @Query("UPDATE projets SET profilId = :profilId WHERE profilId = 0")
+    suspend fun affecterProjetsSansSociete(profilId: Long): Int
 }
 
 @Entity(tableName = "projets")

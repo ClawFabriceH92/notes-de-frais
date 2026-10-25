@@ -62,6 +62,7 @@ fun Racine(
     val parametres by vm.parametres.collectAsStateWithLifecycle()
     val profils by vm.profils.collectAsStateWithLifecycle()
     val profilCourant by vm.profilCourant.collectAsStateWithLifecycle()
+    val tousProjets by vm.tousProjets.collectAsStateWithLifecycle()
 
     val snackbar = remember { SnackbarHostState() }
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
@@ -83,6 +84,13 @@ fun Racine(
     val launcherRestauration = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
     ) { uri -> uri?.let(vm::restaurer) }
+
+    val launcherParametres = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let(vm::restaurerParametres) }
+
+    // Partage du fichier de paramétrage (JSON) dès qu'il est prêt : voir plus
+    // bas, après la définition de `partager`.
 
     // A file shared from another app: PDF, photo, or several at once.
     val fichiersPartages by partages.collectAsStateWithLifecycle()
@@ -163,6 +171,19 @@ fun Racine(
         vm.sauvegardeConsommee()
     }
 
+    // Paramétrage et sociétés seuls : un JSON, sans les dépenses.
+    val fichierParametres by vm.fichierParametres.collectAsStateWithLifecycle()
+    LaunchedEffect(fichierParametres) {
+        val fichier = fichierParametres ?: return@LaunchedEffect
+        partager(
+            fichier = fichier,
+            type = "application/json",
+            sujet = "Paramétrage Notes de frais · ${parametres.mention}",
+            email = parametres.emailDestinataire,
+        )
+        vm.fichierParametresConsomme()
+    }
+
     val etatMaj by UpdateManager.state.collectAsStateWithLifecycle()
     // One check at launch, then again every 30 minutes while the app stays open:
     // an app left running for days used to never look again. The manager keeps
@@ -190,6 +211,8 @@ fun Racine(
                 onEnregistrer = vm::enregistrerParametres,
                 onSauvegarder = { vm.sauvegarder() },
                 onRestaurer = { launcherRestauration.launch("application/zip") },
+                onSauvegarderParametres = vm::sauvegarderParametres,
+                onRestaurerParametres = { launcherParametres.launch(arrayOf("application/json", "text/plain", "*/*")) },
                 profils = profils,
                 onAjouterProfil = vm::ajouterProfil,
                 onMajProfil = vm::majProfil,
@@ -210,6 +233,7 @@ fun Racine(
                 profils = profils,
                 profilCourant = profilCourant,
                 onChoisirProfil = vm::choisirProfil,
+                onAffecterProfil = vm::affecterProfil,
             )
 
             else -> EcranProjet(
@@ -261,6 +285,9 @@ fun Racine(
             onAjouterPiece = { uri -> vm.ajouterPieceJointe(initiale, uri) },
             moyensPaiement = parametres.moyensPaiement,
             onRecadrerPiece = { nom, bitmap -> vm.recadrerPiece(initiale, nom, bitmap) },
+            // Un projet clôturé est en lecture seule : il n'est pas proposé.
+            projetsCibles = tousProjets.filter { !it.cloture && it.id != initiale.projetId },
+            onDeplacer = { cible -> vm.deplacerDepense(initiale, cible) },
         )
     }
 

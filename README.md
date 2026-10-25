@@ -57,6 +57,13 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
 - **Sauvegarde et restauration** : archive complète (base, justificatifs,
   paramétrage), créée à la demande et **automatiquement avant chaque mise à
   jour**, partageable par mail ou vers Drive.
+- **Paramétrage seul** : un fichier JSON avec le titulaire, le véhicule, les
+  moyens de paiement et les sociétés, **sans aucune dépense**, à sauvegarder et
+  restaurer séparément. À la restauration, les sociétés sont rapprochées par nom
+  et SIRET (mise à jour ou ajout) et les projets existants ne bougent pas.
+- **Rangement** : un projet s'affecte à une société depuis son menu, et une
+  dépense se déplace vers un autre projet (jamais vers un projet clôturé) depuis
+  sa fiche.
 - **Export ZIP par projet** :
   - `recap.xlsx` : feuille « Dépenses » (détail + total, colonnes « N° » qui
     numérote les justificatifs dans l'ordre du ZIP, « Paiement », « Trajet »,

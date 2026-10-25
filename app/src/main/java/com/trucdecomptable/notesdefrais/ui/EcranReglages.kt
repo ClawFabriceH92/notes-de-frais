@@ -62,6 +62,8 @@ fun EcranReglages(
     onEnregistrer: (Parametres) -> Unit,
     onSauvegarder: () -> Unit,
     onRestaurer: () -> Unit,
+    onSauvegarderParametres: () -> Unit = {},
+    onRestaurerParametres: () -> Unit = {},
     profils: List<Profil> = emptyList(),
     onAjouterProfil: (Profil) -> Unit = {},
     onMajProfil: (Profil) -> Unit = {},
@@ -345,6 +347,23 @@ fun EcranReglages(
                     "automatiquement avant chaque mise à jour de l'app.",
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Paramétrage seul", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Un fichier JSON avec le titulaire, le véhicule, les moyens de paiement et les " +
+                    "sociétés, sans aucune dépense : pratique pour passer d'un téléphone à l'autre " +
+                    "sans écraser les notes déjà saisies.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedButton(onClick = onSauvegarderParametres, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Save, contentDescription = null)
+                Text("  Sauvegarder le paramétrage et les sociétés")
+            }
+            OutlinedButton(onClick = onRestaurerParametres, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.SettingsBackupRestore, contentDescription = null)
+                Text("  Restaurer le paramétrage et les sociétés")
+            }
 
             Button(onClick = { onEnregistrer(courant()) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 Text("Enregistrer le paramétrage")

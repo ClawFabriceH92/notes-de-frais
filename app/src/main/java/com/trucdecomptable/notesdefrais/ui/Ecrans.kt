@@ -1,5 +1,6 @@
 package com.trucdecomptable.notesdefrais.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
@@ -75,9 +77,11 @@ fun EcranProjets(
     profils: List<Profil> = emptyList(),
     profilCourant: Long = 0,
     onChoisirProfil: (Long) -> Unit = {},
+    onAffecterProfil: (Projet?, Long, Boolean) -> Unit = { _, _, _ -> },
 ) {
     var nouveau by remember { mutableStateOf<String?>(null) }
     var renomme by remember { mutableStateOf<Projet?>(null) }
+    var affectation by remember { mutableStateOf<Projet?>(null) }
 
     Scaffold(
         topBar = {
@@ -144,6 +148,7 @@ fun EcranProjets(
                             onSupprimer = onSupprimer,
                             onCloturer = { onCloturer(projet) },
                             onDupliquer = { onDupliquer(projet) },
+                            onAffecter = if (profils.isEmpty()) null else ({ affectation = projet }),
                         )
                     }
                 }
@@ -176,6 +181,73 @@ fun EcranProjets(
             },
         )
     }
+
+    affectation?.let { projet ->
+        DialogueAffectation(
+            projet = projet,
+            profils = profils,
+            onAnnuler = { affectation = null },
+            onValider = { profilId, tous ->
+                onAffecterProfil(if (tous) null else projet, profilId, tous)
+                affectation = null
+            },
+        )
+    }
+}
+
+/**
+ * Affecter un projet à une société. Les dépenses suivent leur projet : ranger le
+ * projet range tout ce qu'il contient, sans toucher aux montants.
+ */
+@Composable
+private fun DialogueAffectation(
+    projet: Projet,
+    profils: List<Profil>,
+    onAnnuler: () -> Unit,
+    onValider: (Long, Boolean) -> Unit,
+) {
+    var choisi by remember { mutableStateOf(projet.profilId) }
+    var tous by remember { mutableStateOf(false) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onAnnuler,
+        title = { Text("Société du projet") },
+        text = {
+            Column {
+                Text(
+                    "« ${projet.nom} » et ses dépenses seront rattachés à la société choisie.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(8.dp))
+                listOf(Profil(id = 0, nom = "Sans société")).plus(profils).forEach { profil ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { choisi = profil.id },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = choisi == profil.id,
+                            onClick = { choisi = profil.id },
+                        )
+                        Text(profil.nom, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Switch(checked = tous, onCheckedChange = { tous = it })
+                    Text(
+                        "  Appliquer à tous les projets sans société",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = choisi > 0 || tous,
+                onClick = { onValider(choisi, tous) },
+            ) { Text("Affecter") }
+        },
+        dismissButton = { TextButton(onClick = onAnnuler) { Text("Annuler") } },
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -213,6 +285,7 @@ private fun CarteProjet(
     onSupprimer: (Projet) -> Unit,
     onCloturer: () -> Unit = {},
     onDupliquer: () -> Unit = {},
+    onAffecter: (() -> Unit)? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     Card(
@@ -250,6 +323,13 @@ private fun CarteProjet(
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                         onClick = { menu = false; onCloturer() },
                     )
+                    if (onAffecter != null) {
+                        DropdownMenuItem(
+                            text = { Text(if (societe.isNullOrBlank()) "Affecter à une société" else "Changer de société") },
+                            leadingIcon = { Icon(Icons.Default.AccountBalance, contentDescription = null) },
+                            onClick = { menu = false; onAffecter() },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Dupliquer (sans les dépenses)") },
                         leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
