@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Notes de frais</string>
+    <!-- Nom affiché sous l'icône et dans le sélecteur d'applications. -->
+    <string name="app_name">Note de frais by Fabrice Heuvrard</string>
 </resources>

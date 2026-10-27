@@ -89,7 +89,7 @@ fun EcranProjets(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Notes de frais") },
+                title = { Text("Note de frais by Fabrice Heuvrard", maxLines = 1) },
                 actions = {
                     IconButton(onClick = onReglages) {
                         Icon(Icons.Default.Settings, contentDescription = "Paramétrage")
