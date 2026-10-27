@@ -284,6 +284,16 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         .flatMapLatest { p -> if (p == null) flowOf(emptyList()) else dao.depenses(p.id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Dépenses jetées du projet en cours, la plus récemment supprimée d'abord. */
+    val corbeille: StateFlow<List<Depense>> = _projet
+        .flatMapLatest { p -> if (p == null) flowOf(emptyList()) else dao.corbeille(p.id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Badge de la corbeille : ce qui a été jeté et peut encore revenir. */
+    val nbCorbeille: StateFlow<Int> = _projet
+        .flatMapLatest { p -> if (p == null) flowOf(0) else dao.nombreCorbeille(p.id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     /** Set while the OCR pipeline runs, so the UI can show a spinner. */
     private val _traitement = MutableStateFlow(false)
     val traitement: StateFlow<Boolean> = _traitement.asStateFlow()
@@ -677,15 +687,61 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         _brouillon.value = null
     }
 
+    /**
+     * Supprimer une dépense la jette à la corbeille : la ligne et sa pièce
+     * jointe restent sur le téléphone, elle sort seulement des totaux et de
+     * l'export. La suppression définitive se fait depuis la corbeille.
+     */
     fun supprimerDepense(depense: Depense) {
         viewModelScope.launch {
+            dao.mettreACorbeille(depense.id, System.currentTimeMillis())
+            _edition.value = null
+            _message.value = "Dépense mise à la corbeille"
+        }
+    }
+
+    fun restaurerDepense(depense: Depense) {
+        viewModelScope.launch {
+            dao.retirerDeCorbeille(depense.id)
+            _message.value = "Dépense restaurée"
+        }
+    }
+
+    /** Efface pour de bon une dépense de la corbeille, et ses pièces jointes. */
+    fun supprimerDefinitivement(depense: Depense) {
+        viewModelScope.launch {
+            val fichiers = depense.tousLesFichiers
             dao.supprimerDepense(depense.id)
-            withContext(Dispatchers.IO) {
-                depense.fichier?.let {
-                    File(ExportManager.dossierJustificatifs(getApplication()), it).delete()
-                }
+            withContext(Dispatchers.IO) { effacerFichiersInutiles(fichiers) }
+            _message.value = "Dépense supprimée définitivement"
+        }
+    }
+
+    fun viderCorbeille() {
+        val projet = _projet.value ?: return
+        viewModelScope.launch {
+            val jetees = withContext(Dispatchers.IO) { dao.corbeilleSync(projet.id) }
+            jetees.forEach { dao.supprimerDepense(it.id) }
+            withContext(Dispatchers.IO) { effacerFichiersInutiles(jetees.flatMap { it.tousLesFichiers }) }
+            _message.value = when (jetees.size) {
+                0 -> "Corbeille déjà vide"
+                1 -> "1 dépense effacée définitivement"
+                else -> "${jetees.size} dépenses effacées définitivement"
             }
-            _message.value = "Dépense supprimée"
+        }
+    }
+
+    /**
+     * Efface les fichiers qu'aucune dépense ne référence plus : une même pièce
+     * peut être partagée (dépense dupliquée, annexe), elle ne doit pas
+     * disparaître sous les pieds de celle qui reste.
+     */
+    private suspend fun effacerFichiersInutiles(noms: List<String>) {
+        val dossier = ExportManager.dossierJustificatifs(getApplication())
+        noms.distinct().forEach { nom ->
+            if (nom.isBlank()) return@forEach
+            val restantes = runCatching { dao.compterUtilisations(nom) }.getOrDefault(1)
+            if (restantes == 0) File(dossier, nom).delete()
         }
     }
 

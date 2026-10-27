@@ -12,8 +12,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 class ExportTest {
 
@@ -112,6 +115,55 @@ class ExportTest {
         val synthese = entrees["xl/worksheets/sheet2.xml"].orEmpty()
         assertTrue(synthese.contains("Mission Paris"))
         assertTrue(synthese.contains("337.5") || synthese.contains("337.50"))
+    }
+
+    /**
+     * Régression : le classeur est lui-même un ZIP. Écrit directement dans une
+     * entrée du ZIP d'export, il refermait le flux parent, et l'entrée suivante
+     * échouait avec « Stream closed » : aucun export ne sortait.
+     */
+    @Test
+    fun `classeur ecrit dans une entree du ZIP d'export sans fermer le ZIP`() {
+        val projet = Projet(id = 1, nom = "Mission Paris")
+        val depenses = listOf(
+            Depense(projetId = 1, date = "2026-10-12", montantCentimes = 24850, type = TypeDepense.HOTEL.name),
+        )
+        val sortie = ByteArrayOutputStream()
+        ZipOutputStream(sortie).use { zip ->
+            zip.putNextEntry(ZipEntry("recap.xlsx"))
+            val versClasseur = XlsxWriter.bouclier(zip)
+            XlsxWriter().ecrire(ExportManager.feuilles(projet, depenses), versClasseur)
+            versClasseur.flush()
+            zip.closeEntry()
+            // L'entrée suivante est celle qui levait « Stream closed ».
+            zip.putNextEntry(ZipEntry("piece.pdf"))
+            zip.write("%PDF-1.4".toByteArray())
+            zip.closeEntry()
+        }
+
+        val entrees = mutableMapOf<String, ByteArray>()
+        ZipInputStream(ByteArrayInputStream(sortie.toByteArray())).use { zip ->
+            var entree = zip.nextEntry
+            while (entree != null) {
+                entrees[entree.name] = zip.readBytes()
+                zip.closeEntry()
+                entree = zip.nextEntry
+            }
+        }
+        assertEquals(setOf("recap.xlsx", "piece.pdf"), entrees.keys)
+
+        // Le classeur reste un vrai xlsx : un ZIP avec ses feuilles.
+        val interne = mutableListOf<String>()
+        ZipInputStream(ByteArrayInputStream(entrees.getValue("recap.xlsx"))).use { zip ->
+            var entree = zip.nextEntry
+            while (entree != null) {
+                interne.add(entree.name)
+                zip.closeEntry()
+                entree = zip.nextEntry
+            }
+        }
+        assertTrue(interne.contains("xl/workbook.xml"))
+        assertTrue(interne.any { it.startsWith("xl/worksheets/sheet") })
     }
 
     @Test

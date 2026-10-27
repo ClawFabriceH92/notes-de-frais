@@ -64,6 +64,8 @@ fun Racine(
     val profilCourant by vm.profilCourant.collectAsStateWithLifecycle()
     val tousProjets by vm.tousProjets.collectAsStateWithLifecycle()
     val profilActif by vm.profilActif.collectAsStateWithLifecycle()
+    val corbeille by vm.corbeille.collectAsStateWithLifecycle()
+    val nbCorbeille by vm.nbCorbeille.collectAsStateWithLifecycle()
 
     // Moyens de paiement proposés : les communs, plus ceux de la société en cours.
     val moyensPaiement = remember(parametres.moyensPaiement, profilActif) {
@@ -73,6 +75,7 @@ fun Racine(
     val snackbar = remember { SnackbarHostState() }
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
     var reglages by remember { mutableStateOf(false) }
+    var corbeilleOuverte by remember { mutableStateOf(false) }
     var indemnite by remember { mutableStateOf(false) }
     var deverrouille by remember { mutableStateOf(!parametres.verrouillageActif) }
     // Pièce ouverte en grand avant le formulaire (option du paramétrage).
@@ -242,11 +245,23 @@ fun Racine(
                 onAffecterProfil = vm::affecterProfil,
             )
 
-            else -> EcranProjet(
+            else -> if (corbeilleOuverte) {
+                EcranCorbeille(
+                    projetNom = courant.nom,
+                    depenses = corbeille,
+                    onRetour = { corbeilleOuverte = false },
+                    onRestaurer = vm::restaurerDepense,
+                    onSupprimerDefinitivement = vm::supprimerDefinitivement,
+                    onVider = vm::viderCorbeille,
+                )
+            } else EcranProjet(
                 projet = courant,
                 depenses = depenses,
                 traitement = traitement,
-                onRetour = vm::fermerProjet,
+                onRetour = {
+                    corbeilleOuverte = false
+                    vm.fermerProjet()
+                },
                 onPhoto = ::prendrePhoto,
                 onGalerie = { launcherGalerie.launch(arrayOf("image/*", "application/pdf")) },
                 onManuel = vm::ajouterManuellement,
@@ -264,6 +279,8 @@ fun Racine(
                 onRecadrerPiece = vm::recadrerPiece,
                 societe = profils.firstOrNull { it.id == courant.profilId }?.nom
                     ?: parametres.societe.takeIf { it.isNotBlank() },
+                onCorbeille = { corbeilleOuverte = true },
+                nbCorbeille = nbCorbeille,
             )
         }
 

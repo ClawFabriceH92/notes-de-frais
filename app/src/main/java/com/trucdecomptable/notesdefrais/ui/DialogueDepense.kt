@@ -91,6 +91,7 @@ fun DialogueDepense(
     var tauxBdf by remember { mutableStateOf<TauxBdf.Taux?>(null) }
     var apercu by remember { mutableStateOf<String?>(null) }
     var choixProjet by remember { mutableStateOf(false) }
+    var confirmationCorbeille by remember { mutableStateOf(false) }
 
     val launcherPiece = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
@@ -368,12 +369,36 @@ fun DialogueDepense(
         dismissButton = {
             Row {
                 if (onSupprimer != null && initiale.id != 0L) {
-                    TextButton(onClick = { onSupprimer(initiale) }) { Text("Supprimer") }
+                    TextButton(onClick = { confirmationCorbeille = true }) { Text("Corbeille") }
                 }
                 TextButton(onClick = onAnnuler) { Text("Annuler") }
             }
         },
     )
+
+    if (confirmationCorbeille) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmationCorbeille = false },
+            title = { Text("Mettre à la corbeille ?") },
+            text = {
+                Text(
+                    "La dépense sort des totaux et de l'export, mais son justificatif est " +
+                        "conservé : tu pourras la restaurer depuis la corbeille du projet.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmationCorbeille = false
+                        onSupprimer?.invoke(initiale)
+                    },
+                ) { Text("Mettre à la corbeille") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmationCorbeille = false }) { Text("Annuler") }
+            },
+        )
+    }
 
     apercu?.let { nom ->
         ApercuPiece(

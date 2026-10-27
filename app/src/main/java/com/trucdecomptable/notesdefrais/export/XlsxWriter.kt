@@ -42,11 +42,25 @@ class XlsxWriter {
         const val GRAS = 1
         const val MONTANT = 2
         const val GRAS_MONTANT = 3
+
+        /**
+         * Un flux qui ne referme pas celui qu'il enveloppe. Un classeur écrit
+         * DANS une entrée de ZIP doit finir son répertoire central sans fermer
+         * le ZIP parent : sinon l'entrée suivante échoue avec « Stream closed »
+         * et l'export entier est perdu.
+         */
+        fun bouclier(out: OutputStream): OutputStream = object : java.io.FilterOutputStream(out) {
+            override fun write(b: ByteArray, off: Int, len: Int) = out.write(b, off, len)
+            override fun close() {
+                flush()
+            }
+        }
     }
 
     /**
      * Writes every sheet into [out]. The stream is closed, since a workbook
-     * without its central directory is a corrupt file.
+     * without its central directory is a corrupt file. Pass
+     * [bouclier] when [out] is itself an entry of a ZIP.
      */
     fun ecrire(feuilles: List<Feuille>, out: OutputStream) {
         require(feuilles.isNotEmpty()) { "au moins une feuille" }

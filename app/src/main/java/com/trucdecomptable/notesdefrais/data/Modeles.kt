@@ -169,7 +169,15 @@ data class Depense(
     val participants: String = "",
     val societeParticipant: String = "",
     val motifRepas: String = "",
+    /**
+     * Quand la dépense a été mise à la corbeille (null = dépense active). Une
+     * dépense à la corbeille n'est ni listée, ni totalisée, ni exportée, mais
+     * sa pièce jointe reste sur le téléphone jusqu'à la suppression définitive.
+     */
+    val corbeilleLe: Long? = null,
 ) {
+    val dansCorbeille: Boolean get() = corbeilleLe != null
+
     val typeDepense: TypeDepense get() = TypeDepense.fromName(type)
 
     /** The trip question only means something for a train or a plane. */

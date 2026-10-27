@@ -6,6 +6,11 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
 ## Périmètre validé
 
 - **Projets** : nom libre, on passe de l'un à l'autre, renommage et suppression.
+- **Corbeille** : supprimer une dépense la jette à la corbeille du projet (icône
+  en haut à droite, avec le nombre) au lieu de l'effacer. Elle sort des totaux et
+  de l'export, mais garde sa pièce jointe et se restaure en un tap. La
+  suppression définitive (ou « Vider ») efface la dépense et son fichier, avec
+  confirmation.
 - **Capture** : appareil photo, fichier existant (photo **ou PDF**), ou
   **partage depuis une autre app** (mail, galerie, boutique) : le fichier arrive
   directement dans le projet ouvert, et attend le choix d'un projet si aucun

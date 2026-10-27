@@ -106,7 +106,11 @@ object ExportManager {
 
             ZipOutputStream(FileOutputStream(zipFile)).use { zip ->
                 zip.putNextEntry(ZipEntry("recap.xlsx"))
-                XlsxWriter().ecrire(feuilles(projet, depenses, parametres, plan, profil), zip)
+                // Le classeur est lui-même un ZIP : son flux est blindé pour
+                // qu'il ne referme pas le ZIP de l'export (« Stream closed »).
+                val versClasseur = XlsxWriter.bouclier(zip)
+                XlsxWriter().ecrire(feuilles(projet, depenses, parametres, plan, profil), versClasseur)
+                versClasseur.flush()
                 zip.closeEntry()
 
                 for (justificatif in plan.filter { it.noms.isNotEmpty() }) {

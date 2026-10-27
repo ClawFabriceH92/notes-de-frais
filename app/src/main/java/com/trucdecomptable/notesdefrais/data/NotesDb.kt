@@ -38,14 +38,32 @@ interface NotesDao {
     @Query("DELETE FROM projets WHERE id = :id")
     suspend fun supprimerProjet(id: Long)
 
-    @Query("SELECT * FROM depenses WHERE projetId = :projetId ORDER BY date DESC, creeLe DESC")
+    @Query("SELECT * FROM depenses WHERE projetId = :projetId AND corbeilleLe IS NULL ORDER BY date DESC, creeLe DESC")
     fun depenses(projetId: Long): Flow<List<Depense>>
 
-    @Query("SELECT * FROM depenses WHERE projetId = :projetId ORDER BY date ASC, creeLe ASC")
+    @Query("SELECT * FROM depenses WHERE projetId = :projetId AND corbeilleLe IS NULL ORDER BY date ASC, creeLe ASC")
     suspend fun depensesSync(projetId: Long): List<Depense>
 
+    /** Sauvegarde : la corbeille comprise, pour ne rien perdre à la restauration. */
     @Query("SELECT * FROM depenses ORDER BY date ASC")
     suspend fun toutesLesDepenses(): List<Depense>
+
+    /** Les dépenses supprimées, de la plus récemment jetée à la plus ancienne. */
+    @Query("SELECT * FROM depenses WHERE projetId = :projetId AND corbeilleLe IS NOT NULL ORDER BY corbeilleLe DESC")
+    fun corbeille(projetId: Long): Flow<List<Depense>>
+
+    @Query("SELECT * FROM depenses WHERE projetId = :projetId AND corbeilleLe IS NOT NULL ORDER BY corbeilleLe DESC")
+    suspend fun corbeilleSync(projetId: Long): List<Depense>
+
+    @Query("SELECT COUNT(*) FROM depenses WHERE projetId = :projetId AND corbeilleLe IS NOT NULL")
+    fun nombreCorbeille(projetId: Long): Flow<Int>
+
+    /** Supprimer = jeter à la corbeille : la pièce jointe reste sur le téléphone. */
+    @Query("UPDATE depenses SET corbeilleLe = :horodatage WHERE id = :id")
+    suspend fun mettreACorbeille(id: Long, horodatage: Long)
+
+    @Query("UPDATE depenses SET corbeilleLe = NULL WHERE id = :id")
+    suspend fun retirerDeCorbeille(id: Long)
 
     @Insert
     suspend fun ajouterDepense(depense: Depense): Long
@@ -65,12 +83,23 @@ interface NotesDao {
     @Query("SELECT COUNT(*) FROM depenses WHERE fichier = :fichier")
     suspend fun compterFichier(fichier: String): Int
 
+    /**
+     * Combien de dépenses utilisent encore ce fichier (pièce principale ou
+     * annexe), corbeille comprise : un fichier partagé ne doit pas être effacé
+     * sous les pieds d'une autre dépense.
+     */
+    @Query(
+        "SELECT COUNT(*) FROM depenses WHERE fichier = :fichier " +
+            "OR ('|' || fichiersSupplementaires || '|') LIKE ('%|' || :fichier || '|%')",
+    )
+    suspend fun compterUtilisations(fichier: String): Int
+
     /** Fills the payment method of the expenses recorded before the feature. */
     @Query("UPDATE depenses SET moyenPaiement = :moyen WHERE moyenPaiement = ''")
     suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class, Profil::class], version = 8, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class, Profil::class], version = 9, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
     abstract fun profilsDao(): ProfilsDao
@@ -152,6 +181,17 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        /**
+         * La corbeille : une dépense supprimée n'est plus listée mais reste en
+         * base, avec sa pièce jointe, jusqu'à la suppression définitive.
+         * `NULL` = dépense active, donc toutes les lignes existantes le restent.
+         */
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE depenses ADD COLUMN corbeilleLe INTEGER")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
@@ -159,7 +199,7 @@ abstract class NotesDb : RoomDatabase() {
                 "notes-de-frais.db",
             ).addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
+                MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
             ).build().also { instance = it }
         }
 

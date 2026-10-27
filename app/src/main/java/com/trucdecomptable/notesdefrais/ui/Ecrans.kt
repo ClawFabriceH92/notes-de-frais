@@ -21,13 +21,17 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -360,6 +364,8 @@ fun EcranProjet(
     onIndemniteKm: () -> Unit = {},
     onRecadrerPiece: (Depense, String, android.graphics.Bitmap) -> Unit = { _, _, _ -> },
     societe: String? = null,
+    onCorbeille: () -> Unit = {},
+    nbCorbeille: Int = 0,
 ) {
     var menuAjout by remember { mutableStateOf(false) }
     var recherche by remember { mutableStateOf("") }
@@ -392,6 +398,15 @@ fun EcranProjet(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onCorbeille) {
+                        BadgedBox(
+                            badge = {
+                                if (nbCorbeille > 0) Badge { Text("$nbCorbeille") }
+                            },
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Corbeille")
+                        }
+                    }
                     IconButton(onClick = onExport, enabled = depenses.isNotEmpty() && !traitement) {
                         Icon(Icons.Default.IosShare, contentDescription = "Exporter le ZIP")
                     }
@@ -569,6 +584,182 @@ private fun LigneDepense(
             onFermer = { apercu = null },
             onRecadrer = { piece, bitmap -> onRecadrer(depense, piece, bitmap) },
         )
+    }
+}
+
+/**
+ * La corbeille d'un projet : une dépense supprimée y reste avec son
+ * justificatif, hors des totaux et de l'export, jusqu'à ce qu'on la restaure
+ * ou qu'on l'efface pour de bon.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EcranCorbeille(
+    projetNom: String,
+    depenses: List<Depense>,
+    onRetour: () -> Unit,
+    onRestaurer: (Depense) -> Unit,
+    onSupprimerDefinitivement: (Depense) -> Unit,
+    onVider: () -> Unit,
+) {
+    var demandeVidage by remember { mutableStateOf(false) }
+    var aEffacer by remember { mutableStateOf<Depense?>(null) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Corbeille") },
+                navigationIcon = {
+                    IconButton(onClick = onRetour) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                    }
+                },
+                actions = {
+                    TextButton(onClick = { demandeVidage = true }, enabled = depenses.isNotEmpty()) {
+                        Text("Vider")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Text(
+                if (depenses.isEmpty()) {
+                    "Corbeille vide. Les dépenses supprimées arrivent ici, avec leur justificatif."
+                } else {
+                    "${depenses.size} dépense(s) de « $projetNom » : hors des totaux et de l'export, " +
+                        "les justificatifs sont conservés."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(depenses, key = { it.id }) { depense ->
+                    LigneCorbeille(
+                        depense = depense,
+                        onRestaurer = { onRestaurer(depense) },
+                        onEffacer = { aEffacer = depense },
+                    )
+                }
+            }
+        }
+    }
+
+    if (demandeVidage) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { demandeVidage = false },
+            title = { Text("Vider la corbeille ?") },
+            text = {
+                Text(
+                    "Les ${depenses.size} dépense(s) de la corbeille seront effacées " +
+                        "définitivement, avec leurs justificatifs. C'est irréversible.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { demandeVidage = false; onVider() }) { Text("Vider") }
+            },
+            dismissButton = {
+                TextButton(onClick = { demandeVidage = false }) { Text("Annuler") }
+            },
+        )
+    }
+
+    aEffacer?.let { depense ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { aEffacer = null },
+            title = { Text("Effacer définitivement ?") },
+            text = {
+                Text(
+                    "${depense.typeDepense.label} · ${NotesViewModel.montantLisible(depense)} · " +
+                        "${Dates.affichage(depense.date)}\n\nLa dépense et son justificatif seront " +
+                        "supprimés. C'est irréversible.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        aEffacer = null
+                        onSupprimerDefinitivement(depense)
+                    },
+                ) { Text("Effacer") }
+            },
+            dismissButton = { TextButton(onClick = { aEffacer = null }) { Text("Annuler") } },
+        )
+    }
+}
+
+@Composable
+private fun LigneCorbeille(
+    depense: Depense,
+    onRestaurer: () -> Unit,
+    onEffacer: () -> Unit,
+) {
+    var apercu by remember { mutableStateOf<String?>(null) }
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                depense.tousLesFichiers.firstOrNull()?.let { nom ->
+                    VignettePiece(
+                        nom = nom,
+                        taille = 48.dp,
+                        modifier = Modifier.padding(end = 12.dp),
+                    ) { apercu = nom }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(depense.typeDepense.label, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        buildString {
+                            append(Dates.affichage(depense.date))
+                            if (depense.libelle.isNotBlank()) append(" · ").append(depense.libelle)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                    )
+                    depense.corbeilleLe?.let { quand ->
+                        Text(
+                            "supprimée le " + SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE)
+                                .format(Date(quand)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                }
+                Text(
+                    NotesViewModel.montantLisible(depense),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onRestaurer) {
+                    Icon(
+                        Icons.Default.RestoreFromTrash,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 6.dp).height(18.dp),
+                    )
+                    Text("Restaurer")
+                }
+                IconButton(onClick = onEffacer) {
+                    Icon(Icons.Default.DeleteForever, contentDescription = "Effacer définitivement")
+                }
+            }
+        }
+    }
+    apercu?.let { nom ->
+        ApercuPiece(nom = nom, onFermer = { apercu = null })
     }
 }
 
