@@ -316,6 +316,19 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _export = MutableStateFlow<File?>(null)
     val export: StateFlow<File?> = _export.asStateFlow()
 
+    /** Export trop lourd : il attend la décision (découper en deux ou envoyer tel quel). */
+    private val _exportTrop = MutableStateFlow<File?>(null)
+    val exportTrop: StateFlow<File?> = _exportTrop.asStateFlow()
+
+    /** Export déjà découpé, à partager d'un seul geste. */
+    private val _exportMultiple = MutableStateFlow<List<File>?>(null)
+    val exportMultiple: StateFlow<List<File>?> = _exportMultiple.asStateFlow()
+
+    /** Ce qu'il faut pour reconstruire les parties sans relire la base. */
+    private val _projetExporte = MutableStateFlow<Projet?>(null)
+    private val _listeExportee = MutableStateFlow<List<Depense>>(emptyList())
+    private val _profilExporte = MutableStateFlow<Profil?>(null)
+
     private val _sauvegarde = MutableStateFlow<File?>(null)
     val sauvegarde: StateFlow<File?> = _sauvegarde.asStateFlow()
 
@@ -421,6 +434,31 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             dao.majProjet(ferme)
             if (_projet.value?.id == projet.id) _projet.value = ferme
             _message.value = if (ferme.cloture) "Projet clôturé (lecture seule)" else "Projet réouvert"
+        }
+    }
+
+    /** Les projets rangés : hors de l'accueil, mais entiers. */
+    val projetsArchives: StateFlow<List<Projet>> = _profilCourant
+        .flatMapLatest { id -> dao.projetsArchives(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Archiver range un projet (il disparaît de l'accueil) sans le clôturer :
+     * les dépenses, les pièces jointes et l'export restent possibles si on le
+     * rouvre depuis les archives. Un projet clôturé peut aussi être archivé.
+     */
+    fun archiverProjet(projet: Projet) {
+        viewModelScope.launch {
+            dao.archiverProjet(projet.id, System.currentTimeMillis())
+            if (_projet.value?.id == projet.id) _projet.value = null
+            _message.value = "« ${projet.nom} » archivé (voir les projets archivés)"
+        }
+    }
+
+    fun desarchiverProjet(projet: Projet) {
+        viewModelScope.launch {
+            dao.desarchiverProjet(projet.id)
+            _message.value = "« ${projet.nom} » de retour dans l'accueil"
         }
     }
 
@@ -764,8 +802,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 _emailExport.value = profil?.emailDestinataire?.takeIf { it.isNotBlank() }
                     ?: _parametres.value.emailDestinataire
-                _export.value = fichier
-                _message.value = "ZIP prêt : ${liste.size} justificatif(s)"
+                _projetExporte.value = projet
+                _listeExportee.value = liste
+                _profilExporte.value = profil
+                if (fichier.length() > ExportManager.SEUIL_DECOUPAGE) {
+                    // Trop lourd pour un mail : on demande avant de partager.
+                    _exportTrop.value = fichier
+                    _message.value = "ZIP de ${tailleLisible(fichier.length())} : le découper en 2 ?"
+                } else {
+                    _export.value = fichier
+                    _message.value = "ZIP prêt : ${liste.size} justificatif(s)"
+                }
             } catch (e: Exception) {
                 Diag.record("export", e)
                 _message.value = "Export impossible : ${e.message ?: "erreur"}"
@@ -773,6 +820,62 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 _traitement.value = false
             }
         }
+    }
+
+    /** Découpe l'export en attente en deux archives de poids comparable. */
+    fun decouperExport() {
+        val fichier = _exportTrop.value ?: return
+        val projet = _projetExporte.value
+        val liste = _listeExportee.value
+        if (projet == null || liste.isEmpty()) {
+            _exportTrop.value = null
+            return
+        }
+        viewModelScope.launch {
+            try {
+                _traitement.value = true
+                _exportTrop.value = null
+                val parties = ExportManager.decouper(
+                    getApplication(), projet, liste, _parametres.value, _profilExporte.value,
+                )
+                // L'archive complète est remplacée par ses parties : pas de doublon
+                // de 20 Mo qui traîne dans filesDir.
+                if (parties.size > 1) fichier.delete()
+                _exportMultiple.value = parties
+                _message.value = if (parties.size > 1) {
+                    "Export découpé en ${parties.size} parties"
+                } else {
+                    "Rien à découper : tout tient dans la première partie"
+                }
+            } catch (e: Exception) {
+                Diag.record("export/decoupage", e)
+                _message.value = "Découpage impossible : ${e.message ?: "erreur"}"
+            } finally {
+                _traitement.value = false
+            }
+        }
+    }
+
+    /** Garde l'archive telle quelle pour l'envoi. */
+    fun envoyerExportTelQuel() {
+        val fichier = _exportTrop.value ?: return
+        _exportTrop.value = null
+        _export.value = fichier
+    }
+
+    fun annulerDecoupage() {
+        _exportTrop.value?.delete()
+        _exportTrop.value = null
+        _message.value = "Export annulé"
+    }
+
+    fun exportMultipleConsomme() {
+        _exportMultiple.value = null
+    }
+
+    private fun tailleLisible(octets: Long): String {
+        val mo = octets / (1024.0 * 1024.0)
+        return String.format(java.util.Locale.FRANCE, "%.1f Mo", mo)
     }
 
     fun exportConsomme() {

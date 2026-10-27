@@ -114,7 +114,15 @@ data class Projet(
     val clotureLe: Long? = null,
     /** Société propriétaire du projet ; 0 = pas de profil (société du paramétrage). */
     val profilId: Long = 0,
-)
+    /**
+     * Archivé = rangé, hors de l'accueil mais intact : ni les dépenses ni les
+     * pièces jointes ne bougent, et la restauration le remet dans la liste.
+     * Différent de [cloture], qui rend le projet en lecture seule mais visible.
+     */
+    val archiveLe: Long? = null,
+) {
+    val archive: Boolean get() = archiveLe != null
+}
 
 /**
  * One expense. Amounts are stored in cents so no rounding drifts into the

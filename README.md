@@ -6,6 +6,14 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
 ## Périmètre validé
 
 - **Projets** : nom libre, on passe de l'un à l'autre, renommage et suppression.
+- **Archiver un projet** : différent de le clôturer. Clôturer rend le projet en
+  lecture seule mais il reste visible ; archiver le range hors de l'accueil
+  (icône archives en haut à droite, avec le nombre). Rien n'est supprimé :
+  dépenses et justificatifs restent, et « Restaurer » le remet dans la liste.
+- **Export volumineux** : au-delà de 10 Mo, l'app propose de découper le ZIP en
+  deux archives de poids comparable. Le récap part dans la première, les
+  justificatifs sont répartis par taille et l'ordre chronologique est conservé
+  dans chaque partie. On peut aussi envoyer tel quel.
 - **Corbeille** : supprimer une dépense la jette à la corbeille du projet (icône
   en haut à droite, avec le nombre) au lieu de l'effacer. Elle sort des totaux et
   de l'export, mais garde sa pièce jointe et se restaure en un tap. La

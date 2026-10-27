@@ -16,12 +16,28 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface NotesDao {
 
-    @Query("SELECT * FROM projets ORDER BY creeLe DESC")
+    @Query("SELECT * FROM projets WHERE archiveLe IS NULL ORDER BY creeLe DESC")
     fun projets(): Flow<List<Projet>>
 
     /** 0 = pas de filtre : tous les projets, comme avant les profils. */
-    @Query("SELECT * FROM projets WHERE profilId = :profilId OR :profilId = 0 ORDER BY creeLe DESC")
+    @Query(
+        "SELECT * FROM projets WHERE (profilId = :profilId OR :profilId = 0) " +
+            "AND archiveLe IS NULL ORDER BY creeLe DESC",
+    )
     fun projetsDuProfil(profilId: Long): Flow<List<Projet>>
+
+    /** Les projets rangés, du plus récemment archivé au plus ancien. */
+    @Query(
+        "SELECT * FROM projets WHERE (profilId = :profilId OR :profilId = 0) " +
+            "AND archiveLe IS NOT NULL ORDER BY archiveLe DESC",
+    )
+    fun projetsArchives(profilId: Long): Flow<List<Projet>>
+
+    @Query("UPDATE projets SET archiveLe = :horodatage WHERE id = :id")
+    suspend fun archiverProjet(id: Long, horodatage: Long)
+
+    @Query("UPDATE projets SET archiveLe = NULL WHERE id = :id")
+    suspend fun desarchiverProjet(id: Long)
 
     @Query("SELECT * FROM projets ORDER BY creeLe DESC")
     suspend fun tousLesProjets(): List<Projet>
@@ -99,7 +115,7 @@ interface NotesDao {
     suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class, Profil::class], version = 9, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class, Profil::class], version = 10, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
     abstract fun profilsDao(): ProfilsDao
@@ -192,6 +208,17 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        /**
+         * L'archivage range un projet hors de l'accueil sans rien supprimer.
+         * `NULL` = projet actif, donc toutes les lignes existantes restent
+         * visibles après la mise à jour.
+         */
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE projets ADD COLUMN archiveLe INTEGER")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
@@ -199,7 +226,7 @@ abstract class NotesDb : RoomDatabase() {
                 "notes-de-frais.db",
             ).addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+                MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
             ).build().also { instance = it }
         }
 

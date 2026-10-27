@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -56,6 +57,8 @@ fun Racine(
     val edition by vm.edition.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val export by vm.export.collectAsStateWithLifecycle()
+    val exportTrop by vm.exportTrop.collectAsStateWithLifecycle()
+    val exportMultiple by vm.exportMultiple.collectAsStateWithLifecycle()
     val emailExport by vm.emailExport.collectAsStateWithLifecycle()
     val sauvegarde by vm.sauvegarde.collectAsStateWithLifecycle()
     val derniere by vm.derniere.collectAsStateWithLifecycle()
@@ -64,6 +67,7 @@ fun Racine(
     val profilCourant by vm.profilCourant.collectAsStateWithLifecycle()
     val tousProjets by vm.tousProjets.collectAsStateWithLifecycle()
     val profilActif by vm.profilActif.collectAsStateWithLifecycle()
+    val projetsArchives by vm.projetsArchives.collectAsStateWithLifecycle()
     val corbeille by vm.corbeille.collectAsStateWithLifecycle()
     val nbCorbeille by vm.nbCorbeille.collectAsStateWithLifecycle()
 
@@ -76,6 +80,7 @@ fun Racine(
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
     var reglages by remember { mutableStateOf(false) }
     var corbeilleOuverte by remember { mutableStateOf(false) }
+    var archivesOuvertes by remember { mutableStateOf(false) }
     var indemnite by remember { mutableStateOf(false) }
     var deverrouille by remember { mutableStateOf(!parametres.verrouillageActif) }
     // Pièce ouverte en grand avant le formulaire (option du paramétrage).
@@ -143,6 +148,34 @@ fun Racine(
         }
     }
 
+    /** Plusieurs archives d'un coup (export découpé) : un seul partage. */
+    fun partagerPlusieurs(fichiers: List<File>, type: String, sujet: String, email: String) {
+        try {
+            val uris = ArrayList(
+                fichiers.map { FileProvider.getUriForFile(context, "${'$'}{context.packageName}.fileprovider", it) },
+            )
+            val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                this.type = type
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                putExtra(Intent.EXTRA_SUBJECT, sujet)
+                if (email.isNotBlank()) {
+                    putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
+                    putExtra(Intent.EXTRA_TEXT, "Notes de frais : ${'$'}sujet")
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(
+                if (email.isNotBlank()) {
+                    Intent.createChooser(intent, "Envoyer à ${'$'}email")
+                } else {
+                    Intent.createChooser(intent, "Envoyer les fichiers")
+                },
+            )
+        } catch (e: Exception) {
+            Diag.record("partage/multiple", e)
+        }
+    }
+
     // Messages: the one right after a save offers a one-tap correction.
     LaunchedEffect(message) {
         val texte = message ?: return@LaunchedEffect
@@ -167,6 +200,18 @@ fun Racine(
             email = emailExport ?: parametres.emailDestinataire,
         )
         vm.exportConsomme()
+    }
+
+    LaunchedEffect(exportMultiple) {
+        val fichiers = exportMultiple ?: return@LaunchedEffect
+        val nom = projet?.nom.orEmpty()
+        partagerPlusieurs(
+            fichiers = fichiers,
+            type = "application/zip",
+            sujet = "Notes de frais · ${'$'}nom · ${'$'}{parametres.mention}",
+            email = emailExport ?: parametres.emailDestinataire,
+        )
+        vm.exportMultipleConsomme()
     }
 
     LaunchedEffect(sauvegarde) {
@@ -229,6 +274,14 @@ fun Racine(
                 chercherSiret = { siret -> vm.chercherSiret(siret) },
             )
 
+            courant == null && archivesOuvertes -> EcranArchives(
+                projets = projetsArchives,
+                societePour = { projet -> profils.firstOrNull { it.id == projet.profilId }?.nom },
+                onRetour = { archivesOuvertes = false },
+                onOuvrir = vm::ouvrirProjet,
+                onDesarchiver = vm::desarchiverProjet,
+            )
+
             courant == null -> EcranProjets(
                 projets = projets,
                 onOuvrir = vm::ouvrirProjet,
@@ -243,6 +296,9 @@ fun Racine(
                 profilCourant = profilCourant,
                 onChoisirProfil = vm::choisirProfil,
                 onAffecterProfil = vm::affecterProfil,
+                onArchiver = vm::archiverProjet,
+                onVoirArchives = { archivesOuvertes = true },
+                nbArchives = projetsArchives.size,
             )
 
             else -> if (corbeilleOuverte) {
@@ -339,6 +395,28 @@ fun Racine(
             onValider = { date, distance, trajet, frais, libelle ->
                 vm.ajouterIndemniteKm(date, distance, trajet, frais, libelle)
                 indemnite = false
+            },
+        )
+    }
+
+    exportTrop?.let { fichier ->
+        val mo = String.format(java.util.Locale.FRANCE, "%.1f", fichier.length() / (1024.0 * 1024.0))
+        AlertDialog(
+            onDismissRequest = { vm.annulerDecoupage() },
+            title = { Text("Export volumineux") },
+            text = {
+                Text(
+                    "Le ZIP fait ${'$'}mo Mo, au-delà de la limite de 10 Mo pour un envoi simple. " +
+                        "Le découper en deux archives ? Le récap reste dans la première, les " +
+                        "justificatifs sont répartis, et rien n'est perdu.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { vm.decouperExport() }) { Text("Découper en 2") } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { vm.envoyerExportTelQuel() }) { Text("Envoyer tel quel") }
+                    TextButton(onClick = { vm.annulerDecoupage() }) { Text("Annuler") }
+                }
             },
         )
     }

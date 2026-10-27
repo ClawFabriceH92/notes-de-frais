@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -81,6 +83,9 @@ fun EcranProjets(
     profilCourant: Long = 0,
     onChoisirProfil: (Long) -> Unit = {},
     onAffecterProfil: (Projet?, Long, Boolean) -> Unit = { _, _, _ -> },
+    onArchiver: (Projet) -> Unit = {},
+    onVoirArchives: () -> Unit = {},
+    nbArchives: Int = 0,
 ) {
     var nouveau by remember { mutableStateOf<String?>(null) }
     var renomme by remember { mutableStateOf<Projet?>(null) }
@@ -91,6 +96,15 @@ fun EcranProjets(
             TopAppBar(
                 title = { Text("Note de frais by Fabrice Heuvrard", maxLines = 1) },
                 actions = {
+                    IconButton(onClick = onVoirArchives) {
+                        BadgedBox(
+                            badge = {
+                                if (nbArchives > 0) Badge { Text("$nbArchives") }
+                            },
+                        ) {
+                            Icon(Icons.Default.Archive, contentDescription = "Projets archivés")
+                        }
+                    }
                     IconButton(onClick = onReglages) {
                         Icon(Icons.Default.Settings, contentDescription = "Paramétrage")
                     }
@@ -152,6 +166,7 @@ fun EcranProjets(
                             onCloturer = { onCloturer(projet) },
                             onDupliquer = { onDupliquer(projet) },
                             onAffecter = if (profils.isEmpty()) null else ({ affectation = projet }),
+                            onArchiver = { onArchiver(projet) },
                         )
                     }
                 }
@@ -289,6 +304,7 @@ private fun CarteProjet(
     onCloturer: () -> Unit = {},
     onDupliquer: () -> Unit = {},
     onAffecter: (() -> Unit)? = null,
+    onArchiver: () -> Unit = {},
 ) {
     var menu by remember { mutableStateOf(false) }
     Card(
@@ -333,6 +349,11 @@ private fun CarteProjet(
                             onClick = { menu = false; onAffecter() },
                         )
                     }
+                    DropdownMenuItem(
+                        text = { Text("Archiver (le ranger hors de l'accueil)") },
+                        leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) },
+                        onClick = { menu = false; onArchiver() },
+                    )
                     DropdownMenuItem(
                         text = { Text("Dupliquer (sans les dépenses)") },
                         leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
@@ -760,6 +781,91 @@ private fun LigneCorbeille(
     }
     apercu?.let { nom ->
         ApercuPiece(nom = nom, onFermer = { apercu = null })
+    }
+}
+
+/**
+ * Les projets archivés : rangés, jamais perdus. Un projet archivé n'a pas
+ * changé d'un centime, seule sa place dans l'accueil a disparu. On peut le
+ * rouvrir (il reste archivé) ou le restaurer pour le remettre dans la liste.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EcranArchives(
+    projets: List<Projet>,
+    societePour: (Projet) -> String?,
+    onRetour: () -> Unit,
+    onOuvrir: (Projet) -> Unit,
+    onDesarchiver: (Projet) -> Unit,
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Projets archivés") },
+                navigationIcon = {
+                    IconButton(onClick = onRetour) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Text(
+                if (projets.isEmpty()) {
+                    "Aucun projet archivé. Depuis l'accueil, menu d'un projet → Archiver."
+                } else {
+                    "${projets.size} projet(s) archivé(s) : dépenses et justificatifs intacts."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(projets, key = { it.id }) { projet ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                            Text(
+                                projet.nom,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                buildString {
+                                    projet.archiveLe?.let {
+                                        append("archivé le ")
+                                        append(SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(Date(it)))
+                                    }
+                                    if (projet.cloture) append(" · clôturé")
+                                    societePour(projet)?.takeIf { it.isNotBlank() }?.let {
+                                        append(" · ").append(it)
+                                    }
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TextButton(onClick = { onOuvrir(projet) }) { Text("Ouvrir") }
+                                TextButton(onClick = { onDesarchiver(projet) }) {
+                                    Icon(
+                                        Icons.Default.Unarchive,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 6.dp).height(18.dp),
+                                    )
+                                    Text("Restaurer")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

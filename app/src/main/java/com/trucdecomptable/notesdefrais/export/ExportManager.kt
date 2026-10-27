@@ -30,6 +30,12 @@ object ExportManager {
     const val DOSSIER_EXPORTS = "exports"
 
     /**
+     * Au-delà de 10 Mo, un ZIP ne passe plus en pièce jointe de mail courant :
+     * l'app propose alors de le couper en deux.
+     */
+    const val SEUIL_DECOUPAGE = 10L * 1024 * 1024
+
+    /**
      * One line of the export: the expense, its running number in the archive
      * and the exact file names written. The workbook and the ZIP are built from
      * the same list, so a renamed or duplicated file can never drift apart.
@@ -121,37 +127,121 @@ object ExportManager {
             val zipFile = File(dossierExports(context), "$prefixe${slug}_$horodatage.zip")
             val dossierPieces = dossierJustificatifs(context)
             val plan = planJustificatifs(slug, depenses) { nom -> File(dossierPieces, nom).exists() }
+            ecrireZip(context, zipFile, feuilles(projet, depenses, parametres, plan, profil), plan)
+            zipFile
+        }
 
-            ZipOutputStream(FileOutputStream(zipFile)).use { zip ->
+    /**
+     * Découpe l'export en deux archives de poids comparable quand il dépasse
+     * [SEUIL_DECOUPAGE] : le récap part dans la première, les justificatifs sont
+     * répartis par taille. Deux ZIP utilisables tels quels, plutôt qu'une
+     * archive binaire à recoller sur un téléphone.
+     */
+    suspend fun decouper(
+        context: Context,
+        projet: Projet,
+        depenses: List<Depense>,
+        parametres: Parametres = Parametres(),
+        profil: Profil? = null,
+    ): List<File> =
+        withContext(Dispatchers.IO) {
+            val slug = slugProjet(projet.nom)
+            val societe = profil?.nom?.takeIf { it.isNotBlank() } ?: parametres.societe
+            val prefixe = societe.takeIf { it.isNotBlank() }?.let { slugProjet(it) + "_" }.orEmpty()
+            val horodatage = java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+            val dossierPieces = dossierJustificatifs(context)
+            val plan = planJustificatifs(slug, depenses) { nom -> File(dossierPieces, nom).exists() }
+            val feuilles = feuilles(projet, depenses, parametres, plan, profil)
+
+            val avecFichiers = plan.filter { it.noms.isNotEmpty() }
+            val poids = avecFichiers.associateWith { justificatif ->
+                justificatif.depense.tousLesFichiers
+                    .map { File(dossierPieces, it) }
+                    .filter { it.exists() }
+                    .sumOf { it.length() }
+            }
+            val (premiere, seconde) = repartirEnDeux(avecFichiers, poids)
+
+            val base = "$prefixe${slug}_$horodatage"
+            val partie1 = File(dossierExports(context), "${base}_partie1.zip")
+            ecrireZip(context, partie1, feuilles, premiere)
+            if (seconde.isEmpty()) return@withContext listOf(partie1)
+
+            val partie2 = File(dossierExports(context), "${base}_partie2.zip")
+            // Le récap n'est mis qu'une fois : il liste tout le projet.
+            ecrireZip(context, partie2, emptyList(), seconde)
+            listOf(partie1, partie2)
+        }
+
+    /**
+     * Répartit les justificatifs en deux tas de poids comparable : le premier
+     * reçoit le récap. Les plus grosses pièces sont placées d'abord, toujours
+     * dans le tas le plus léger, puis l'ordre chronologique de l'export est
+     * rétabli dans chaque partie (l'ordre des PDF doit rester lisible).
+     */
+    fun repartirEnDeux(
+        justificatifs: List<Justificatif>,
+        poids: Map<Justificatif, Long>,
+    ): Pair<List<Justificatif>, List<Justificatif>> {
+        if (justificatifs.size <= 1) return justificatifs to emptyList()
+        val rang = justificatifs.withIndex().associate { (index, justificatif) -> justificatif to index }
+        val premiere = mutableListOf<Justificatif>()
+        val seconde = mutableListOf<Justificatif>()
+        var poidsPremiere = 0L
+        var poidsSeconde = 0L
+        justificatifs.sortedByDescending { poids[it] ?: 0L }.forEach { justificatif ->
+            val taille = poids[justificatif] ?: 0L
+            if (poidsPremiere <= poidsSeconde) {
+                premiere.add(justificatif)
+                poidsPremiere += taille
+            } else {
+                seconde.add(justificatif)
+                poidsSeconde += taille
+            }
+        }
+        return premiere.sortedBy { rang[it] } to seconde.sortedBy { rang[it] }
+    }
+
+    /** Écrit une archive : le récap (si fourni) puis les justificatifs. */
+    private fun ecrireZip(
+        context: Context,
+        sortie: File,
+        feuilles: List<XlsxWriter.Feuille>,
+        plan: List<Justificatif>,
+    ) {
+        val dossierPieces = dossierJustificatifs(context)
+        ZipOutputStream(FileOutputStream(sortie)).use { zip ->
+            if (feuilles.isNotEmpty()) {
                 zip.putNextEntry(ZipEntry("recap.xlsx"))
                 // Le classeur est lui-même un ZIP : son flux est blindé pour
                 // qu'il ne referme pas le ZIP de l'export (« Stream closed »).
                 val versClasseur = XlsxWriter.bouclier(zip)
-                XlsxWriter().ecrire(feuilles(projet, depenses, parametres, plan, profil), versClasseur)
+                XlsxWriter().ecrire(feuilles, versClasseur)
                 versClasseur.flush()
                 zip.closeEntry()
+            }
 
-                for (justificatif in plan.filter { it.noms.isNotEmpty() }) {
-                    val sources = justificatif.depense.tousLesFichiers
-                        .map { File(dossierPieces, it) }
-                        .filter { it.exists() }
-                    justificatif.noms.forEachIndexed { rang, nom ->
-                        val source = sources.getOrNull(rang) ?: return@forEachIndexed
-                        zip.putNextEntry(ZipEntry(nom))
-                        if (estPdf(source)) {
-                            source.inputStream().use { it.copyTo(zip) }
-                        } else {
-                            val pdf = File(context.cacheDir, "tmp-${justificatif.depense.id}-$rang.pdf")
-                            imageVersPdf(source, pdf, enteteJustificatif(nom))
-                            pdf.inputStream().use { it.copyTo(zip) }
-                            pdf.delete()
-                        }
-                        zip.closeEntry()
+            for (justificatif in plan.filter { it.noms.isNotEmpty() }) {
+                val sources = justificatif.depense.tousLesFichiers
+                    .map { File(dossierPieces, it) }
+                    .filter { it.exists() }
+                justificatif.noms.forEachIndexed { rang, nom ->
+                    val source = sources.getOrNull(rang) ?: return@forEachIndexed
+                    zip.putNextEntry(ZipEntry(nom))
+                    if (estPdf(source)) {
+                        source.inputStream().use { it.copyTo(zip) }
+                    } else {
+                        val pdf = File(context.cacheDir, "tmp-${justificatif.depense.id}-$rang.pdf")
+                        imageVersPdf(source, pdf, enteteJustificatif(nom))
+                        pdf.inputStream().use { it.copyTo(zip) }
+                        pdf.delete()
                     }
+                    zip.closeEntry()
                 }
             }
-            zipFile
         }
+    }
 
     private fun unique(nom: String, pris: MutableSet<String>): String {
         if (pris.add(nom)) return nom
