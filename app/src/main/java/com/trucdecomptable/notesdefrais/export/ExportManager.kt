@@ -61,6 +61,8 @@ object ExportManager {
     /**
      * Numbers the attachments in export order: 1, 2, 3… skipping expenses that
      * have no file at all, so the numbers match the ZIP one for one.
+     * Chaque PDF finit par `_JustifN` : les pièces s'ordonnent comme le récap et
+     * Fabrice retrouve le numéro de la ligne Excel sur le fichier.
      * [existe] drops attachments whose file is no longer on the phone.
      */
     fun planJustificatifs(
@@ -74,13 +76,29 @@ object ExportManager {
             val presents = depense.tousLesFichiers.filter(existe)
             if (presents.isEmpty()) return@map Justificatif(depense, 0, emptyList())
             val base = nomJustificatif(slug, depense).removeSuffix(".pdf")
+            val numeroJustif = numero + 1
             val noms = presents.mapIndexed { rang, _ ->
                 // Second and later attachments are named _annexe2, _annexe3…
-                val propose = if (rang == 0) "$base.pdf" else "${base}_annexe${rang + 1}.pdf"
-                unique(propose, pris)
+                val suffixe = if (rang == 0) {
+                    "_Justif$numeroJustif"
+                } else {
+                    "_Justif${numeroJustif}_annexe${rang + 1}"
+                }
+                unique("$base$suffixe.pdf", pris)
             }
             Justificatif(depense, ++numero, noms)
         }
+    }
+
+    /**
+     * Le nom du fichier inscrit en haut de la page du PDF. Il est déjà long
+     * (projet, date, type, montant, numéro) : on retire l'extension, et on
+     * coupe avec « … » plutôt que de laisser le texte sortir de la page.
+     */
+    fun enteteJustificatif(nomFichier: String, maxCaracteres: Int = 90): String {
+        val sansExtension = nomFichier.removeSuffix(".pdf").trim()
+        if (sansExtension.length <= maxCaracteres) return sansExtension
+        return sansExtension.take(maxCaracteres - 1).trimEnd() + "…"
     }
 
     /**
@@ -124,7 +142,7 @@ object ExportManager {
                             source.inputStream().use { it.copyTo(zip) }
                         } else {
                             val pdf = File(context.cacheDir, "tmp-${justificatif.depense.id}-$rang.pdf")
-                            imageVersPdf(source, pdf)
+                            imageVersPdf(source, pdf, enteteJustificatif(nom))
                             pdf.inputStream().use { it.copyTo(zip) }
                             pdf.delete()
                         }
@@ -154,7 +172,7 @@ object ExportManager {
     }.getOrDefault(false)
 
     /** Wraps a receipt photo in an A4 PDF, keeping the whole image visible. */
-    fun imageVersPdf(image: File, sortie: File) {
+    fun imageVersPdf(image: File, sortie: File, entete: String = "") {
         val bitmap = BitmapFactory.decodeFile(image.absolutePath) ?: return
         val document = PdfDocument()
         try {
@@ -164,13 +182,29 @@ object ExportManager {
             val page = document.startPage(PdfDocument.PageInfo.Builder(largeur, hauteur, 1).create())
             val canvas = page.canvas
             canvas.drawColor(Color.WHITE)
+
+            // Le nom du fichier en haut de page : une fois la pièce imprimée ou
+            // sortie du ZIP, elle reste identifiable sans son nom de fichier.
+            var hautUtile = marge
+            if (entete.isNotBlank()) {
+                val encre = Paint(Paint.ANTI_ALIAS_FLAG)
+                encre.color = Color.DKGRAY
+                encre.textSize = 9f
+                canvas.drawText(entete, marge, marge + 9f, encre)
+                // Filet de séparation, pour que l'en-tête ne se confonde pas
+                // avec le haut du ticket photographié.
+                val trait = Paint().apply { color = Color.LTGRAY; strokeWidth = 0.5f }
+                canvas.drawLine(marge, marge + 14f, largeur - marge, marge + 14f, trait)
+                hautUtile = marge + 22f
+            }
+
             val dispoLargeur = largeur - 2 * marge
-            val dispoHauteur = hauteur - 2 * marge
+            val dispoHauteur = hauteur - hautUtile - marge
             val echelle = minOf(dispoLargeur / bitmap.width, dispoHauteur / bitmap.height, 3f)
             val dessineLargeur = bitmap.width * echelle
             val dessineHauteur = bitmap.height * echelle
             val gauche = (largeur - dessineLargeur) / 2f
-            val haut = (hauteur - dessineHauteur) / 2f
+            val haut = hautUtile + (dispoHauteur - dessineHauteur) / 2f
             canvas.drawBitmap(
                 bitmap,
                 null,

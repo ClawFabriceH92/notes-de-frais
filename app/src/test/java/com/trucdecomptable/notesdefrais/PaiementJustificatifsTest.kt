@@ -39,10 +39,10 @@ class PaiementJustificatifsTest {
 
         assertEquals(3, plan.size)
         assertEquals(1, plan[0].numero)
-        assertEquals("Mission_Paris_2026-10-12_hotel_248.50EUR.pdf", plan[0].noms.single())
+        assertEquals("Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1.pdf", plan[0].noms.single())
         // A duplicate name is suffixed instead of overwriting the first file.
         assertEquals(2, plan[1].numero)
-        assertEquals("Mission_Paris_2026-10-12_hotel_248.50EUR_2.pdf", plan[1].noms.single())
+        assertEquals("Mission_Paris_2026-10-12_hotel_248.50EUR_Justif2.pdf", plan[1].noms.single())
         // An expense with no file gets no number, so the numbers stay 1..n.
         assertEquals(0, plan[2].numero)
         assertTrue(plan[2].noms.isEmpty())
@@ -55,9 +55,9 @@ class PaiementJustificatifsTest {
 
         assertEquals(
             listOf(
-                "Mission_Paris_2026-10-12_hotel_248.50EUR.pdf",
-                "Mission_Paris_2026-10-12_hotel_248.50EUR_annexe2.pdf",
-                "Mission_Paris_2026-10-12_hotel_248.50EUR_annexe3.pdf",
+                "Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1.pdf",
+                "Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1_annexe2.pdf",
+                "Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1_annexe3.pdf",
             ),
             plan.single().noms,
         )
@@ -68,7 +68,7 @@ class PaiementJustificatifsTest {
         val depense = hotel(1, "a.jpg", annexes = "perdue.pdf")
         val plan = ExportManager.planJustificatifs("Mission_Paris", listOf(depense)) { nom -> nom == "a.jpg" }
 
-        assertEquals(listOf("Mission_Paris_2026-10-12_hotel_248.50EUR.pdf"), plan.single().noms)
+        assertEquals(listOf("Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1.pdf"), plan.single().noms)
     }
 
     @Test
@@ -101,7 +101,7 @@ class PaiementJustificatifsTest {
         val detail = entrees["xl/worksheets/sheet1.xml"].orEmpty()
         assertTrue(detail.contains("Paiement"))
         assertTrue(detail.contains("CB pro"))
-        assertTrue(detail.contains("Mission_Paris_2026-10-12_hotel_248.50EUR.pdf"))
+        assertTrue(detail.contains("Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1.pdf"))
         // The number is a real cell, not text the reader has to parse.
         assertTrue(detail.contains("<c r=\"A2\" s=\"0\"><v>1</v></c>"))
 

@@ -167,6 +167,19 @@ class ExportTest {
     }
 
     @Test
+    fun `entete du PDF - nom du fichier sans extension`() {
+        assertEquals(
+            "Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1",
+            ExportManager.enteteJustificatif("Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1.pdf"),
+        )
+        // Un nom trop long est coupé : il doit tenir sur une ligne de la page.
+        val long = "A".repeat(200) + ".pdf"
+        val entete = ExportManager.enteteJustificatif(long)
+        assertTrue(entete.length <= 90)
+        assertTrue(entete.endsWith("…"))
+    }
+
+    @Test
     fun `colonne excel au dela de Z`() {
         val writer = XlsxWriter()
         assertEquals("A", writer.colonne(0))
