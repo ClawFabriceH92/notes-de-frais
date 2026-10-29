@@ -60,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.trucdecomptable.notesdefrais.data.Depense
 import com.trucdecomptable.notesdefrais.data.Profil
 import com.trucdecomptable.notesdefrais.data.Projet
@@ -95,7 +96,20 @@ fun EcranProjets(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Note de frais by Fabrice Heuvrard", maxLines = 1) },
+                // Le nom complet sur une ligne était coupé par les trois icônes
+                // d'action (« Note de frais by… ») : titre court, signature
+                // discrète en dessous.
+                title = {
+                    Column {
+                        Text("Note de frais", maxLines = 1, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Fabrice Heuvrard",
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 actions = {
                     IconButton(onClick = onVoirArchives) {
                         BadgedBox(
