@@ -88,6 +88,7 @@ fun EcranReglages(
     var paiementDefaut by remember { mutableStateOf(initial.moyenPaiementDefaut) }
     var nouveauMoyen by remember { mutableStateOf<String?>(null) }
     var pieceEnGrand by remember { mutableStateOf(initial.pieceEnGrand) }
+    var recadrageAuto by remember { mutableStateOf(initial.recadrageAuto) }
     var profilEdite by remember { mutableStateOf<Profil?>(null) }
     var code by remember { mutableStateOf("") }
     var codeHash by remember { mutableStateOf(initial.codeAccesHash) }
@@ -116,6 +117,7 @@ fun EcranReglages(
         pieceEnGrandV2 = initial.pieceEnGrandV2,
         profilCourant = initial.profilCourant,
         moyensPaiementV2 = initial.moyensPaiementV2,
+        recadrageAuto = recadrageAuto,
     )
 
     Scaffold(
@@ -267,6 +269,14 @@ fun EcranReglages(
                 Text(
                     "  Ouvrir le justificatif en grand dès qu'on touche une dépense " +
                         "(le formulaire s'ouvre à la fermeture)",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = recadrageAuto, onCheckedChange = { recadrageAuto = it })
+                Text(
+                    "  Ne garder que le ticket sur une photo (le fond est coupé). " +
+                        "Le recadrage manuel reste disponible sur la pièce jointe.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }

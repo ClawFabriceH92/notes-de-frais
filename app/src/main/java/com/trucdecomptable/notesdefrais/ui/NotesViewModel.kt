@@ -570,6 +570,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             runCatching {
                 val fichier = withContext(Dispatchers.IO) { ReceiptOcr.stocker(getApplication(), uri) }
+                // Même recadrage que la pièce principale : une photo de facture
+                // posée sur un bureau ne garde que la facture.
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        ReceiptOcr.lire(
+                            getApplication(),
+                            fichier,
+                            recadrage = _parametres.value.recadrageAuto,
+                        )
+                    }.onFailure { Diag.record("piece-jointe/recadrage", it) }
+                }
                 val liste = depense.tousLesFichiers + fichier.name
                 val maj = depense.copy(fichiersSupplementaires = liste.drop(1).joinToString("|"))
                 dao.majDepense(maj)
@@ -647,9 +658,18 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         _traitement.value = true
         try {
             val fichier = withContext(Dispatchers.IO) { ReceiptOcr.stocker(getApplication(), uri) }
-            val texte = runCatching { ReceiptOcr.texte(getApplication(), fichier) }
+            // Les blocs de texte lus par l'OCR servent aussi à ne garder que le
+            // ticket : le fond de la photo (bureau, main, table) est coupé.
+            val lecture = runCatching {
+                ReceiptOcr.lire(
+                    getApplication(),
+                    fichier,
+                    recadrage = _parametres.value.recadrageAuto,
+                )
+            }
                 .onFailure { Diag.record("ocr/texte", it) }
-                .getOrDefault("")
+                .getOrDefault(ReceiptOcr.Lecture("", recadre = false))
+            val texte = lecture.texte
             val champs = ReceiptParser.parse(texte)
             Diag.record(
                 "ocr/resultat",

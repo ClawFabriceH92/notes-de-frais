@@ -44,6 +44,11 @@ data class Parametres(
     val profilCourant: Long = 0,
     /** Set once the "payé par un tiers" default was merged into an old list. */
     val moyensPaiementV2: Boolean = false,
+    /**
+     * Coupe le fond des photos de justificatif : seule la zone du ticket est
+     * conservée. Désactivable dans le paramétrage.
+     */
+    val recadrageAuto: Boolean = true,
 ) {
     val verrouillageActif: Boolean get() = codeAccesHash.isNotBlank()
 
@@ -85,6 +90,7 @@ data class Parametres(
         put("pieceEnGrandV2", pieceEnGrandV2)
         put("profilCourant", profilCourant)
         put("moyensPaiementV2", moyensPaiementV2)
+        put("recadrageAuto", recadrageAuto)
     }
 
     companion object {
@@ -118,6 +124,7 @@ data class Parametres(
             pieceEnGrandV2 = json.optBoolean("pieceEnGrandV2", false),
             profilCourant = json.optLong("profilCourant", 0L),
             moyensPaiementV2 = json.optBoolean("moyensPaiementV2", false),
+            recadrageAuto = json.optBoolean("recadrageAuto", true),
         )
     }
 }

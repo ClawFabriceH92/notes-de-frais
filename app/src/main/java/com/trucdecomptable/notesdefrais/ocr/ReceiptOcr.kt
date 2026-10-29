@@ -135,6 +135,105 @@ object ReceiptOcr {
         }
     }
 
+    /**
+     * Lecture d'une pièce, avec recadrage automatique sur le ticket quand c'est
+     * une photo.
+     *
+     * Les blocs de texte lus par ML Kit donnent l'étendue du ticket : on ne
+     * garde que cette zone, plus une marge. L'image est réécrite sur place, donc
+     * le justificatif joint, l'aperçu et l'export utilisent la photo recadrée.
+     * Les PDF ne sont pas touchés.
+     */
+    suspend fun lire(
+        context: Context,
+        fichier: File,
+        recadrage: Boolean = true,
+    ): Lecture = withContext(Dispatchers.IO) {
+        if (fichier.extension.equals("pdf", ignoreCase = true)) {
+            return@withContext Lecture(texte(context, fichier), recadre = false)
+        }
+        val bitmap = decoder(fichier) ?: return@withContext Lecture("", recadre = false)
+        val oriente = orienter(fichier, bitmap)
+        val resultat = runCatching { reconnaitre(oriente) }.getOrNull()
+            ?: return@withContext Lecture("", recadre = false)
+
+        val zones = resultat.textBlocks
+            .filter { it.text.trim().length >= 2 }
+            .mapNotNull { bloc -> bloc.boundingBox }
+            .map { Zone(it.left, it.top, it.right, it.bottom) }
+
+        val zone = if (recadrage) {
+            Cadrage.zoneDuTicket(zones, oriente.width, oriente.height)
+        } else {
+            null
+        }
+
+        if (zone == null) {
+            // Sans recadrage on garde quand même la photo remise d'aplomb.
+            if (oriente !== bitmap) enregistrerBitmap(fichier, oriente)
+            return@withContext Lecture(resultat.text, recadre = false)
+        }
+
+        val decoupe = runCatching {
+            Bitmap.createBitmap(oriente, zone.left, zone.top, zone.largeur, zone.hauteur)
+        }.getOrNull() ?: return@withContext Lecture(resultat.text, recadre = false)
+
+        if (decoupe !== oriente) enregistrerBitmap(fichier, decoupe)
+        Diag.record(
+            "ocr/recadrage",
+            "${fichier.name} ${oriente.width}×${oriente.height} -> " +
+                "${zone.largeur}×${zone.hauteur} (${zones.size} blocs)",
+        )
+        Lecture(resultat.text, recadre = true)
+    }
+
+    /** Redresse la photo selon son EXIF (appareil tenu en portrait, par exemple). */
+    private fun orienter(fichier: File, bitmap: Bitmap): Bitmap {
+        val orientation = runCatching {
+            @Suppress("DEPRECATION")
+            android.media.ExifInterface(fichier.absolutePath)
+                .getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
+        }.getOrDefault(1)
+        val degres = when (orientation) {
+            3 -> 180f
+            6 -> 90f
+            8 -> 270f
+            else -> 0f
+        }
+        if (degres == 0f) return bitmap
+        val matrice = android.graphics.Matrix().apply { postRotate(degres) }
+        return runCatching {
+            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrice, true)
+        }.getOrDefault(bitmap)
+    }
+
+    private suspend fun reconnaitre(bitmap: Bitmap): com.google.mlkit.vision.text.Text =
+        suspendCancellableCoroutine { continuation ->
+            recognizer.process(InputImage.fromBitmap(bitmap, 0))
+                .addOnSuccessListener { result -> continuation.resume(result) }
+                .addOnFailureListener { e ->
+                    Diag.record("ocr", e)
+                    continuation.resumeWithException(e)
+                }
+        }
+
+    private fun enregistrerBitmap(cible: File, bitmap: Bitmap) {
+        runCatching {
+            val temporaire = File(cible.parentFile, "${cible.name}.tmp")
+            java.io.FileOutputStream(temporaire).use { sortie ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, sortie)
+            }
+            if (!temporaire.renameTo(cible)) {
+                temporaire.copyTo(cible, overwrite = true)
+                temporaire.delete()
+            }
+        }.onFailure { Diag.record("ocr/ecriture", it) }
+    }
+
+    /** Texte lu et indication de recadrage. */
+    data class Lecture(val texte: String, val recadre: Boolean)
+
+
     fun decoder(fichier: File): Bitmap? {
         if (!fichier.exists()) return null
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
