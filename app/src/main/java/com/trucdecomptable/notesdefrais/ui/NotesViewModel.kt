@@ -346,6 +346,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private var planEnvois: List<Envoi> = emptyList()
     private var rangEnvoi = 0
 
+    /** Projet dont l'archivage attend la réponse : envoyer les justificatifs ou non. */
+    private val _archivageEnAttente = MutableStateFlow<Projet?>(null)
+    val archivageEnAttente: StateFlow<Projet?> = _archivageEnAttente.asStateFlow()
+
     /** Ce qu'il faut pour reconstruire les parties sans relire la base. */
     private val _projetExporte = MutableStateFlow<Projet?>(null)
     private val _listeExportee = MutableStateFlow<List<Depense>>(emptyList())
@@ -468,13 +472,47 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
      * Archiver range un projet (il disparaît de l'accueil) sans le clôturer :
      * les dépenses, les pièces jointes et l'export restent possibles si on le
      * rouvre depuis les archives. Un projet clôturé peut aussi être archivé.
+     *
+     * Si les justificatifs ne sont jamais partis à la comptabilité, on le
+     * propose avant de ranger le projet, plutôt que de le faire disparaître de
+     * l'accueil sans que personne n'ait les pièces. Un projet sans pièce jointe,
+     * ou déjà envoyé, s'archive direct.
      */
-    fun archiverProjet(projet: Projet) {
+    fun demanderArchivage(projet: Projet) {
         viewModelScope.launch {
-            dao.archiverProjet(projet.id, System.currentTimeMillis())
-            if (_projet.value?.id == projet.id) _projet.value = null
-            _message.value = "« ${projet.nom} » archivé (voir les projets archivés)"
+            val aEnvoyer = withContext(Dispatchers.IO) {
+                projet.justificatifsEnvoyesLe == null &&
+                    dao.depensesSync(projet.id).any { it.tousLesFichiers.isNotEmpty() }
+            }
+            if (aEnvoyer) _archivageEnAttente.value = projet else archiver(projet)
         }
+    }
+
+    /** Envoie les justificatifs à la comptabilité, puis archive le projet. */
+    fun envoyerEtArchiver(projet: Projet) {
+        _archivageEnAttente.value = null
+        viewModelScope.launch {
+            val envoyes = envoyerJustificatifs(projet)
+            if (envoyes == 0) return@launch
+            archiver(projet)
+            _message.value =
+                "« ${projet.nom} » : $envoyes justificatif(s) envoyé(s), projet archivé"
+        }
+    }
+
+    fun annulerArchivage() {
+        _archivageEnAttente.value = null
+    }
+
+    fun archiverProjet(projet: Projet) {
+        _archivageEnAttente.value = null
+        viewModelScope.launch { archiver(projet) }
+    }
+
+    private suspend fun archiver(projet: Projet) {
+        dao.archiverProjet(projet.id, System.currentTimeMillis())
+        if (_projet.value?.id == projet.id) _projet.value = null
+        _message.value = "« ${projet.nom} » archivé (voir les projets archivés)"
     }
 
     fun desarchiverProjet(projet: Projet) {
@@ -852,38 +890,53 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun envoyerJustificatifsPdf() {
         val projet = _projet.value ?: return
-        viewModelScope.launch {
-            try {
-                _traitement.value = true
-                val liste = withContext(Dispatchers.IO) { dao.depensesSync(projet.id) }
-                if (liste.isEmpty()) {
-                    _message.value = "Aucune dépense à envoyer"
-                    return@launch
-                }
-                val profil = projet.profilId.takeIf { it > 0L }?.let { profilsDao.profil(it) }
-                val fichiers = ExportManager.justificatifsPdf(
-                    getApplication(), projet, liste, _parametres.value, profil,
-                )
-                if (fichiers.isEmpty()) {
-                    _message.value = "Aucune pièce jointe à envoyer"
-                    return@launch
-                }
-                _emailExport.value = profil?.emailDestinataire?.takeIf { it.isNotBlank() }
-                    ?: _parametres.value.emailDestinataire
-                val sujet = "Justificatifs · ${projet.nom} · ${_parametres.value.mention}"
-                lancerEnvois(
-                    ExportManager.repartirEnEnvois(fichiers).map { lot ->
-                        Envoi(lot, "application/pdf", sujet, 0, 0)
-                    },
-                    "PDF",
-                )
-            } catch (e: Exception) {
-                Diag.record("export/pdf", e)
-                _message.value = "Envoi des PDF impossible : ${e.message ?: "erreur"}"
-            } finally {
-                _traitement.value = false
+        viewModelScope.launch { envoyerJustificatifs(projet) }
+    }
+
+    /**
+     * Prépare les PDF du projet et lance le premier envoi. Renvoie le nombre de
+     * fichiers remis à la messagerie, 0 si rien n'est parti.
+     */
+    private suspend fun envoyerJustificatifs(projet: Projet): Int {
+        var envoyes = 0
+        try {
+            _traitement.value = true
+            val liste = withContext(Dispatchers.IO) { dao.depensesSync(projet.id) }
+            if (liste.isEmpty()) {
+                _message.value = "Aucune dépense à envoyer"
+                return 0
             }
+            val profil = projet.profilId.takeIf { it > 0L }?.let { profilsDao.profil(it) }
+            val fichiers = ExportManager.justificatifsPdf(
+                getApplication(), projet, liste, _parametres.value, profil,
+            )
+            if (fichiers.isEmpty()) {
+                _message.value = "Aucune pièce jointe à envoyer"
+                return 0
+            }
+            _emailExport.value = profil?.emailDestinataire?.takeIf { it.isNotBlank() }
+                ?: _parametres.value.emailDestinataire
+            val sujet = "Justificatifs · ${projet.nom} · ${_parametres.value.mention}"
+            lancerEnvois(
+                ExportManager.repartirEnEnvois(fichiers).map { lot ->
+                    Envoi(lot, "application/pdf", sujet, 0, 0)
+                },
+                "PDF",
+            )
+            // La date d'envoi est retenue : archiver ne reproposera plus l'envoi.
+            val maintenant = System.currentTimeMillis()
+            withContext(Dispatchers.IO) { dao.marquerJustificatifsEnvoyes(projet.id, maintenant) }
+            _projet.value?.let { ouvert ->
+                if (ouvert.id == projet.id) _projet.value = ouvert.copy(justificatifsEnvoyesLe = maintenant)
+            }
+            envoyes = fichiers.size
+        } catch (e: Exception) {
+            Diag.record("export/pdf", e)
+            _message.value = "Envoi des PDF impossible : ${e.message ?: "erreur"}"
+        } finally {
+            _traitement.value = false
         }
+        return envoyes
     }
 
     /**

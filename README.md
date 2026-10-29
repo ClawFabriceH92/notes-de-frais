@@ -10,6 +10,10 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   lecture seule mais il reste visible ; archiver le range hors de l'accueil
   (icône archives en haut à droite, avec le nombre). Rien n'est supprimé :
   dépenses et justificatifs restent, et « Restaurer » le remet dans la liste.
+  Depuis la v1.11.0, si les justificatifs ne sont jamais partis à la comptabilité,
+  l'archivage propose « Envoyer et archiver » (PDF à l'adresse de la société, puis
+  archivage) ; on peut aussi archiver sans envoyer. La date du dernier envoi est
+  retenue et rappelée sur la fiche du projet (« envoyés le … »).
 - **Export volumineux** : au-delà de 10 Mo, l'app propose de découper le ZIP en
   autant d'archives qu'il faut pour qu'aucune ne dépasse 10 Mo. Le récap part
   dans la première, les justificatifs sont répartis par taille et l'ordre

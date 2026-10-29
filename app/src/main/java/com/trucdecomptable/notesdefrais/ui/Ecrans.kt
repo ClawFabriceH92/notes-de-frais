@@ -504,10 +504,20 @@ fun EcranProjet(
                     )
                     // Où les justificatifs PDF partent : l'adresse du profil.
                     Text(
-                        if (emailJustificatifs.isNullOrBlank()) {
-                            "PDF : aucune adresse email dans la société"
-                        } else {
-                            "PDF → $emailJustificatifs"
+                        buildString {
+                            append(
+                                if (emailJustificatifs.isNullOrBlank()) {
+                                    "PDF : aucune adresse email dans la société"
+                                } else {
+                                    "PDF → $emailJustificatifs"
+                                },
+                            )
+                            // Et s'ils sont déjà partis, on le dit : c'est ce qui
+                            // évite de les renvoyer deux fois à la comptabilité.
+                            projet.justificatifsEnvoyesLe?.let {
+                                append(" · envoyés le ")
+                                append(java.text.SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(java.util.Date(it)))
+                            }
                         },
                         style = MaterialTheme.typography.bodySmall,
                     )

@@ -58,6 +58,7 @@ fun Racine(
     val message by vm.message.collectAsStateWithLifecycle()
     val export by vm.export.collectAsStateWithLifecycle()
     val exportTrop by vm.exportTrop.collectAsStateWithLifecycle()
+    val archivageEnAttente by vm.archivageEnAttente.collectAsStateWithLifecycle()
     val envoi by vm.envoi.collectAsStateWithLifecycle()
     val envoiSuivant by vm.envoiSuivant.collectAsStateWithLifecycle()
     val emailExport by vm.emailExport.collectAsStateWithLifecycle()
@@ -298,7 +299,7 @@ fun Racine(
                 profilCourant = profilCourant,
                 onChoisirProfil = vm::choisirProfil,
                 onAffecterProfil = vm::affecterProfil,
-                onArchiver = vm::archiverProjet,
+                onArchiver = vm::demanderArchivage,
                 onVoirArchives = { archivesOuvertes = true },
                 nbArchives = projetsArchives.size,
             )
@@ -422,6 +423,44 @@ fun Racine(
                 Row {
                     TextButton(onClick = { vm.envoyerExportTelQuel() }) { Text("Envoyer tel quel") }
                     TextButton(onClick = { vm.annulerDecoupage() }) { Text("Annuler") }
+                }
+            },
+        )
+    }
+
+    // Archiver sans avoir envoyé les pièces laisserait la comptabilité sans
+    // justificatifs : on propose l'envoi avant de ranger le projet.
+    archivageEnAttente?.let { enAttente ->
+        val profilDuProjet = profils.firstOrNull { it.id == enAttente.profilId }
+        val adressePdf = profilDuProjet?.emailDestinataire?.takeIf { it.isNotBlank() }
+            ?: parametres.emailDestinataire
+        AlertDialog(
+            onDismissRequest = { vm.annulerArchivage() },
+            title = { Text("Archiver « ${enAttente.nom} »") },
+            text = {
+                Text(
+                    if (adressePdf.isNotBlank()) {
+                        "Les justificatifs n'ont pas encore été envoyés à la comptabilité. " +
+                            "Les envoyer en PDF à $adressePdf avant d'archiver ? Le projet " +
+                            "part ensuite dans les archives, entier."
+                    } else {
+                        "Les justificatifs n'ont pas encore été envoyés à la comptabilité, et " +
+                            "aucune adresse email n'est renseignée pour cette société. " +
+                            "L'envoi ouvrira le partage, à toi de choisir le destinataire."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.envoyerEtArchiver(enAttente) }) {
+                    Text("Envoyer et archiver")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { vm.archiverProjet(enAttente) }) {
+                        Text("Archiver sans envoyer")
+                    }
+                    TextButton(onClick = { vm.annulerArchivage() }) { Text("Annuler") }
                 }
             },
         )

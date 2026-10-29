@@ -39,6 +39,10 @@ interface NotesDao {
     @Query("UPDATE projets SET archiveLe = NULL WHERE id = :id")
     suspend fun desarchiverProjet(id: Long)
 
+    /** Les justificatifs sont partis à la comptabilité : on garde la date. */
+    @Query("UPDATE projets SET justificatifsEnvoyesLe = :horodatage WHERE id = :id")
+    suspend fun marquerJustificatifsEnvoyes(id: Long, horodatage: Long)
+
     @Query("SELECT * FROM projets ORDER BY creeLe DESC")
     suspend fun tousLesProjets(): List<Projet>
 
@@ -115,7 +119,7 @@ interface NotesDao {
     suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class, Profil::class], version = 10, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class, Profil::class], version = 11, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
     abstract fun profilsDao(): ProfilsDao
@@ -219,6 +223,17 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        /**
+         * Date du dernier envoi des justificatifs à la comptabilité. `NULL` pour
+         * les projets existants : ils seront donc proposés à l'archivage, ce qui
+         * est le comportement voulu (on ne sait pas s'ils sont partis).
+         */
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE projets ADD COLUMN justificatifsEnvoyesLe INTEGER")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
@@ -227,6 +242,7 @@ abstract class NotesDb : RoomDatabase() {
             ).addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                 MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
+                MIGRATION_10_11,
             ).build().also { instance = it }
         }
 

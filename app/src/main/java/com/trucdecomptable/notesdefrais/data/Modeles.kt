@@ -120,8 +120,15 @@ data class Projet(
      * Différent de [cloture], qui rend le projet en lecture seule mais visible.
      */
     val archiveLe: Long? = null,
+    /**
+     * Date du dernier envoi des justificatifs en PDF à la comptabilité. Nulle
+     * tant qu'ils ne sont jamais partis : c'est ce qui déclenche la proposition
+     * d'envoi au moment d'archiver.
+     */
+    val justificatifsEnvoyesLe: Long? = null,
 ) {
     val archive: Boolean get() = archiveLe != null
+    val justificatifsEnvoyes: Boolean get() = justificatifsEnvoyesLe != null
 }
 
 /**
