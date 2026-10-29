@@ -59,6 +59,7 @@ fun Racine(
     val export by vm.export.collectAsStateWithLifecycle()
     val exportTrop by vm.exportTrop.collectAsStateWithLifecycle()
     val exportMultiple by vm.exportMultiple.collectAsStateWithLifecycle()
+    val justificatifsPdf by vm.justificatifsPdf.collectAsStateWithLifecycle()
     val emailExport by vm.emailExport.collectAsStateWithLifecycle()
     val sauvegarde by vm.sauvegarde.collectAsStateWithLifecycle()
     val derniere by vm.derniere.collectAsStateWithLifecycle()
@@ -214,6 +215,19 @@ fun Racine(
         vm.exportMultipleConsomme()
     }
 
+    // Les justificatifs seuls, en PDF, vers l'adresse du profil : ni ZIP ni récap.
+    LaunchedEffect(justificatifsPdf) {
+        val fichiers = justificatifsPdf ?: return@LaunchedEffect
+        val nom = projet?.nom.orEmpty()
+        partagerPlusieurs(
+            fichiers = fichiers,
+            type = "application/pdf",
+            sujet = "Justificatifs · ${'$'}nom · ${'$'}{parametres.mention}",
+            email = emailExport ?: parametres.emailDestinataire,
+        )
+        vm.justificatifsPdfConsommes()
+    }
+
     LaunchedEffect(sauvegarde) {
         val fichier = sauvegarde ?: return@LaunchedEffect
         partager(
@@ -322,6 +336,10 @@ fun Racine(
                 onGalerie = { launcherGalerie.launch(arrayOf("image/*", "application/pdf")) },
                 onManuel = vm::ajouterManuellement,
                 onExport = vm::exporter,
+                onEnvoyerPdf = vm::envoyerJustificatifsPdf,
+                emailJustificatifs = profils.firstOrNull { it.id == courant.profilId }
+                    ?.emailDestinataire?.takeIf { it.isNotBlank() }
+                    ?: parametres.emailDestinataire.takeIf { it.isNotBlank() },
                 onOuvrirDepense = { depense ->
                     val piece = depense.tousLesFichiers.firstOrNull()
                     if (parametres.pieceEnGrand && piece != null) {

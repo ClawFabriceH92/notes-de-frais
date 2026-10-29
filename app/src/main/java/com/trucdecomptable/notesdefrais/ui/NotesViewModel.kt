@@ -324,6 +324,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _exportMultiple = MutableStateFlow<List<File>?>(null)
     val exportMultiple: StateFlow<List<File>?> = _exportMultiple.asStateFlow()
 
+    /** Justificatifs seuls en PDF, prêts à être envoyés à l'adresse du profil. */
+    private val _justificatifsPdf = MutableStateFlow<List<File>?>(null)
+    val justificatifsPdf: StateFlow<List<File>?> = _justificatifsPdf.asStateFlow()
+
     /** Ce qu'il faut pour reconstruire les parties sans relire la base. */
     private val _projetExporte = MutableStateFlow<Projet?>(null)
     private val _listeExportee = MutableStateFlow<List<Depense>>(emptyList())
@@ -820,6 +824,51 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 _traitement.value = false
             }
         }
+    }
+
+    /**
+     * Envoie les justificatifs seuls, en PDF, à l'adresse email du profil du
+     * projet : ni ZIP, ni classeur Excel. C'est ce qu'attend la personne qui
+     * reçoit les pièces pour les classer.
+     */
+    fun envoyerJustificatifsPdf() {
+        val projet = _projet.value ?: return
+        viewModelScope.launch {
+            try {
+                _traitement.value = true
+                val liste = withContext(Dispatchers.IO) { dao.depensesSync(projet.id) }
+                if (liste.isEmpty()) {
+                    _message.value = "Aucune dépense à envoyer"
+                    return@launch
+                }
+                val profil = projet.profilId.takeIf { it > 0L }?.let { profilsDao.profil(it) }
+                val fichiers = ExportManager.justificatifsPdf(
+                    getApplication(), projet, liste, _parametres.value, profil,
+                )
+                if (fichiers.isEmpty()) {
+                    _message.value = "Aucune pièce jointe à envoyer"
+                    return@launch
+                }
+                _emailExport.value = profil?.emailDestinataire?.takeIf { it.isNotBlank() }
+                    ?: _parametres.value.emailDestinataire
+                _justificatifsPdf.value = fichiers
+                val destinataire = _emailExport.value?.takeIf { it.isNotBlank() }
+                _message.value = if (destinataire != null) {
+                    "${fichiers.size} justificatif(s) PDF pour $destinataire"
+                } else {
+                    "${fichiers.size} justificatif(s) PDF : aucun email dans le profil"
+                }
+            } catch (e: Exception) {
+                Diag.record("export/pdf", e)
+                _message.value = "Envoi des PDF impossible : ${e.message ?: "erreur"}"
+            } finally {
+                _traitement.value = false
+            }
+        }
+    }
+
+    fun justificatifsPdfConsommes() {
+        _justificatifsPdf.value = null
     }
 
     /** Découpe l'export en attente en deux archives de poids comparable. */

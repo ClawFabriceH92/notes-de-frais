@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Lock
@@ -381,6 +382,8 @@ fun EcranProjet(
     onGalerie: () -> Unit,
     onManuel: () -> Unit,
     onExport: () -> Unit,
+    onEnvoyerPdf: () -> Unit = {},
+    emailJustificatifs: String? = null,
     onOuvrirDepense: (Depense) -> Unit,
     onIndemniteKm: () -> Unit = {},
     onRecadrerPiece: (Depense, String, android.graphics.Bitmap) -> Unit = { _, _, _ -> },
@@ -389,6 +392,7 @@ fun EcranProjet(
     nbCorbeille: Int = 0,
 ) {
     var menuAjout by remember { mutableStateOf(false) }
+    var menuExport by remember { mutableStateOf(false) }
     var recherche by remember { mutableStateOf("") }
     val totalEur = depenses.sumOf { it.montantEurCentimes ?: 0L } / 100.0
     val nonConverties = depenses.count { it.montantEurCentimes == null }
@@ -428,8 +432,27 @@ fun EcranProjet(
                             Icon(Icons.Default.Delete, contentDescription = "Corbeille")
                         }
                     }
-                    IconButton(onClick = onExport, enabled = depenses.isNotEmpty() && !traitement) {
-                        Icon(Icons.Default.IosShare, contentDescription = "Exporter le ZIP")
+                    // Deux sorties : le ZIP complet (récap Excel + PDF), ou les
+                    // justificatifs seuls en PDF vers l'email du profil.
+                    Box {
+                        IconButton(
+                            onClick = { menuExport = true },
+                            enabled = depenses.isNotEmpty() && !traitement,
+                        ) {
+                            Icon(Icons.Default.IosShare, contentDescription = "Exporter")
+                        }
+                        DropdownMenu(expanded = menuExport, onDismissRequest = { menuExport = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Export ZIP (récap Excel + PDF)") },
+                                leadingIcon = { Icon(Icons.Default.IosShare, contentDescription = null) },
+                                onClick = { menuExport = false; onExport() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Envoyer les justificatifs en PDF") },
+                                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                                onClick = { menuExport = false; onEnvoyerPdf() },
+                            )
+                        }
                     }
                 },
             )
@@ -478,6 +501,15 @@ fun EcranProjet(
                         if (societe.isNullOrBlank()) "Aucune société affectée" else "Société : $societe",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
+                    )
+                    // Où les justificatifs PDF partent : l'adresse du profil.
+                    Text(
+                        if (emailJustificatifs.isNullOrBlank()) {
+                            "PDF : aucune adresse email dans la société"
+                        } else {
+                            "PDF → $emailJustificatifs"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
                         "${depenses.size} dépense(s)" +

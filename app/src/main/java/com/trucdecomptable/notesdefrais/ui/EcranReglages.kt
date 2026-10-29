@@ -145,7 +145,7 @@ fun EcranReglages(
             OutlinedTextField(
                 email,
                 { email = it },
-                label = { Text("Email destinataire des notes de frais") },
+                label = { Text("Email où envoyer les justificatifs (par défaut)") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 modifier = Modifier.fillMaxWidth(),
@@ -165,6 +165,14 @@ fun EcranReglages(
                         Modifier.weight(1f).clickable { profilEdite = profil }.padding(vertical = 6.dp),
                     ) {
                         Text(profil.nom, style = MaterialTheme.typography.titleSmall)
+                        // L'adresse des justificatifs : c'est le champ qu'on
+                        // cherche à relire d'un coup d'œil depuis la liste.
+                        Text(
+                            profil.emailDestinataire.takeIf { it.isNotBlank() }
+                                ?.let { "PDF → $it" }
+                                ?: "PDF : aucune adresse email",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                         val details = listOf(
                             profil.siret,
                             profil.adresse,
@@ -468,7 +476,7 @@ private fun DialogueProfil(
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("Email destinataire des exports") },
+                    label = { Text("Email où envoyer les justificatifs (PDF)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth(),

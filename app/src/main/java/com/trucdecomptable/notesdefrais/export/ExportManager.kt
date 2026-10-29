@@ -132,6 +132,69 @@ object ExportManager {
         }
 
     /**
+     * Les justificatifs seuls, en PDF, prêts à partir vers l'adresse du profil :
+     * ni ZIP, ni classeur Excel. Une photo est convertie en PDF avec son nom de
+     * fichier en haut de page, un PDF est copié tel quel. Les fichiers portent le
+     * même nom que dans le ZIP (`…_JustifN`) pour rester alignés sur le récap.
+     */
+    suspend fun justificatifsPdf(
+        context: Context,
+        projet: Projet,
+        depenses: List<Depense>,
+        parametres: Parametres = Parametres(),
+        profil: Profil? = null,
+    ): List<File> =
+        withContext(Dispatchers.IO) {
+            val slug = slugProjet(projet.nom)
+            val societe = profil?.nom?.takeIf { it.isNotBlank() } ?: parametres.societe
+            val prefixe = societe.takeIf { it.isNotBlank() }?.let { slugProjet(it) + "_" }.orEmpty()
+            val horodatage = java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+            val dossier = File(dossierExports(context), nomDossierPdf(prefixe, slug, horodatage)).apply { mkdirs() }
+            purgerDossiersPdf(context, sauf = dossier)
+
+            val dossierPieces = dossierJustificatifs(context)
+            val plan = planJustificatifs(slug, depenses) { nom -> File(dossierPieces, nom).exists() }
+            for (justificatif in plan.filter { it.noms.isNotEmpty() }) {
+                val sources = justificatif.depense.tousLesFichiers
+                    .map { File(dossierPieces, it) }
+                    .filter { it.exists() }
+                justificatif.noms.forEachIndexed { rang, nom ->
+                    val source = sources.getOrNull(rang) ?: return@forEachIndexed
+                    val sortie = File(dossier, nom)
+                    if (estPdf(source)) {
+                        source.copyTo(sortie, overwrite = true)
+                    } else {
+                        imageVersPdf(source, sortie, enteteJustificatif(nom))
+                    }
+                }
+            }
+            dossier.listFiles().orEmpty()
+                .filter { it.isFile && it.length() > 0L }
+                .sortedBy { it.name }
+        }
+
+    /**
+     * Nom du dossier d'envoi PDF : même base que le ZIP (société, projet,
+     * horodatage) avec le préfixe `pdf_`. Pur, donc vérifiable en test.
+     */
+    fun nomDossierPdf(prefixe: String, slug: String, horodatage: String): String =
+        "pdf_${prefixe}${slug}_$horodatage"
+
+    /**
+     * Les dossiers d'envoi PDF d'hier ne servent plus : on les efface pour ne pas
+     * garder des dizaines de Mo dans filesDir. Le dossier courant est épargné,
+     * et on laisse deux jours de marge au cas où un mail serait encore en cours.
+     */
+    private fun purgerDossiersPdf(context: Context, sauf: File) {
+        val limite = System.currentTimeMillis() - 2L * 24 * 3600 * 1000
+        dossierExports(context).listFiles().orEmpty()
+            .filter { it.isDirectory && it.name.startsWith("pdf_") && it != sauf }
+            .filter { it.lastModified() < limite }
+            .forEach { dossier -> dossier.listFiles().orEmpty().forEach { it.delete() }; dossier.delete() }
+    }
+
+    /**
      * Découpe l'export en deux archives de poids comparable quand il dépasse
      * [SEUIL_DECOUPAGE] : le récap part dans la première, les justificatifs sont
      * répartis par taille. Deux ZIP utilisables tels quels, plutôt qu'une

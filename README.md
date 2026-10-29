@@ -80,6 +80,13 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
 - **Rangement** : un projet s'affecte à une société depuis son menu, et une
   dépense se déplace vers un autre projet (jamais vers un projet clôturé) depuis
   sa fiche.
+- **Envoi des justificatifs en PDF** (v1.9.0) : depuis un projet, le bouton de
+  partage propose soit le ZIP complet, soit **les justificatifs seuls en PDF**,
+  sans ZIP ni classeur Excel, adressés à l'email du profil du projet (celui du
+  paramétrage si la société n'en a pas). L'adresse visée est rappelée sur la
+  fiche du projet (« PDF → … ») et sous chaque société dans le paramétrage. Une
+  photo est convertie en PDF avec son nom de fichier en haut de page, un PDF est
+  joint tel quel ; les noms restent ceux du ZIP (`…_JustifN`).
 - **Export ZIP par projet** :
   - `recap.xlsx` : feuille « Dépenses » (détail + total, colonnes « N° » qui
     numérote les justificatifs dans l'ordre du ZIP, « Paiement », « Trajet »,

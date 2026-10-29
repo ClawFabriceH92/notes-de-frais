@@ -180,6 +180,17 @@ class ExportTest {
     }
 
     @Test
+    fun `dossier d'envoi PDF - prefixe societe projet horodatage`() {
+        // Un dossier par envoi : ni ZIP ni xlsx dedans, uniquement des PDF.
+        val nom = ExportManager.nomDossierPdf("Cabinet_", "Mission_Paris", "20261029-093000")
+        assertEquals("pdf_Cabinet_Mission_Paris_20261029-093000", nom)
+        assertEquals(
+            "pdf_Mission_Paris_20261029-093000",
+            ExportManager.nomDossierPdf("", "Mission_Paris", "20261029-093000"),
+        )
+    }
+
+    @Test
     fun `colonne excel au dela de Z`() {
         val writer = XlsxWriter()
         assertEquals("A", writer.colonne(0))
