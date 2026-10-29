@@ -58,8 +58,8 @@ fun Racine(
     val message by vm.message.collectAsStateWithLifecycle()
     val export by vm.export.collectAsStateWithLifecycle()
     val exportTrop by vm.exportTrop.collectAsStateWithLifecycle()
-    val exportMultiple by vm.exportMultiple.collectAsStateWithLifecycle()
-    val justificatifsPdf by vm.justificatifsPdf.collectAsStateWithLifecycle()
+    val envoi by vm.envoi.collectAsStateWithLifecycle()
+    val envoiSuivant by vm.envoiSuivant.collectAsStateWithLifecycle()
     val emailExport by vm.emailExport.collectAsStateWithLifecycle()
     val sauvegarde by vm.sauvegarde.collectAsStateWithLifecycle()
     val derniere by vm.derniere.collectAsStateWithLifecycle()
@@ -203,29 +203,17 @@ fun Racine(
         vm.exportConsomme()
     }
 
-    LaunchedEffect(exportMultiple) {
-        val fichiers = exportMultiple ?: return@LaunchedEffect
-        val nom = projet?.nom.orEmpty()
+    // Envois successifs : un mail par lot, chacun sous la limite de pièces
+    // jointes. Le lot suivant n'est proposé qu'après le départ du précédent.
+    LaunchedEffect(envoi) {
+        val courant = envoi ?: return@LaunchedEffect
         partagerPlusieurs(
-            fichiers = fichiers,
-            type = "application/zip",
-            sujet = "Notes de frais · ${'$'}nom · ${'$'}{parametres.mention}",
+            fichiers = courant.fichiers,
+            type = courant.type,
+            sujet = courant.sujet,
             email = emailExport ?: parametres.emailDestinataire,
         )
-        vm.exportMultipleConsomme()
-    }
-
-    // Les justificatifs seuls, en PDF, vers l'adresse du profil : ni ZIP ni récap.
-    LaunchedEffect(justificatifsPdf) {
-        val fichiers = justificatifsPdf ?: return@LaunchedEffect
-        val nom = projet?.nom.orEmpty()
-        partagerPlusieurs(
-            fichiers = fichiers,
-            type = "application/pdf",
-            sujet = "Justificatifs · ${'$'}nom · ${'$'}{parametres.mention}",
-            email = emailExport ?: parametres.emailDestinataire,
-        )
-        vm.justificatifsPdfConsommes()
+        vm.envoiConsomme()
     }
 
     LaunchedEffect(sauvegarde) {
@@ -425,17 +413,36 @@ fun Racine(
             text = {
                 Text(
                     "Le ZIP fait ${'$'}mo Mo, au-delà de la limite de 10 Mo pour un envoi simple. " +
-                        "Le découper en deux archives ? Le récap reste dans la première, les " +
-                        "justificatifs sont répartis, et rien n'est perdu.",
+                        "Le découper en plusieurs archives, une par mail ? Le récap reste dans la " +
+                        "première, les justificatifs sont répartis, et rien n'est perdu.",
                 )
             },
-            confirmButton = { TextButton(onClick = { vm.decouperExport() }) { Text("Découper en 2") } },
+            confirmButton = { TextButton(onClick = { vm.decouperExport() }) { Text("Découper") } },
             dismissButton = {
                 Row {
                     TextButton(onClick = { vm.envoyerExportTelQuel() }) { Text("Envoyer tel quel") }
                     TextButton(onClick = { vm.annulerDecoupage() }) { Text("Annuler") }
                 }
             },
+        )
+    }
+
+    // Envoi découpé : chaque mail restant est proposé séparément, puisque la
+    // messagerie doit être validée une fois par mail.
+    envoiSuivant?.let { suivant ->
+        val mo = String.format(java.util.Locale.FRANCE, "%.1f", suivant.poids / (1024.0 * 1024.0))
+        AlertDialog(
+            onDismissRequest = { vm.arreterEnvois() },
+            title = { Text("Envoi ${suivant.rang} sur ${suivant.total}") },
+            text = {
+                Text(
+                    "Une fois le mail précédent parti, il reste ${suivant.fichiers.size} " +
+                        "fichier(s) (${'$'}mo Mo) à envoyer : ils ne tenaient pas dans le même " +
+                        "mail. Envoyer celui-ci maintenant ?",
+                )
+            },
+            confirmButton = { TextButton(onClick = { vm.envoyerEnvoiSuivant() }) { Text("Envoyer") } },
+            dismissButton = { TextButton(onClick = { vm.arreterEnvois() }) { Text("Arrêter") } },
         )
     }
 

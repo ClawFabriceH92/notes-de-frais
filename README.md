@@ -11,9 +11,15 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   (icône archives en haut à droite, avec le nombre). Rien n'est supprimé :
   dépenses et justificatifs restent, et « Restaurer » le remet dans la liste.
 - **Export volumineux** : au-delà de 10 Mo, l'app propose de découper le ZIP en
-  deux archives de poids comparable. Le récap part dans la première, les
-  justificatifs sont répartis par taille et l'ordre chronologique est conservé
-  dans chaque partie. On peut aussi envoyer tel quel.
+  autant d'archives qu'il faut pour qu'aucune ne dépasse 10 Mo. Le récap part
+  dans la première, les justificatifs sont répartis par taille et l'ordre
+  chronologique est conservé dans chaque partie. On peut aussi envoyer tel quel.
+- **Plusieurs mails si besoin** (v1.10.0) : un envoi dont les pièces jointes
+  dépassent 10 Mo est découpé en plusieurs mails, chacun avec ses fichiers. Le
+  premier part tout de suite, les suivants sont proposés un par un après retour
+  dans l'app (« Envoi 2 sur 3 ») : la messagerie se valide une fois par mail,
+  l'app ne peut pas envoyer à sa place. Vaut pour les ZIP découpés comme pour
+  l'envoi des justificatifs en PDF.
 - **Corbeille** : supprimer une dépense la jette à la corbeille du projet (icône
   en haut à droite, avec le nombre) au lieu de l'effacer. Elle sort des totaux et
   de l'export, mais garde sa pièce jointe et se restaure en un tap. La
@@ -80,7 +86,8 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
 - **Rangement** : un projet s'affecte à une société depuis son menu, et une
   dépense se déplace vers un autre projet (jamais vers un projet clôturé) depuis
   sa fiche.
-- **Envoi des justificatifs en PDF** (v1.9.0) : depuis un projet, le bouton de
+- **Envoi des justificatifs en PDF** (v1.9.0, découpé en plusieurs mails depuis
+  la v1.10.0) : depuis un projet, le bouton de
   partage propose soit le ZIP complet, soit **les justificatifs seuls en PDF**,
   sans ZIP ni classeur Excel, adressés à l'email du profil du projet (celui du
   paramétrage si la société n'en a pas). L'adresse visée est rappelée sur la

@@ -39,6 +39,21 @@ import java.io.File
 import java.time.LocalDate
 
 /**
+ * Un mail à remettre à la messagerie : les fichiers qu'il emporte, son type et
+ * son rang quand l'envoi a dû être découpé en plusieurs mails.
+ */
+data class Envoi(
+    val fichiers: List<File>,
+    val type: String,
+    val sujet: String,
+    val rang: Int,
+    val total: Int,
+) {
+    val poids: Long get() = fichiers.sumOf { it.length() }
+    val decoupe: Boolean get() = total > 1
+}
+
+/**
  * One ViewModel for the whole app: projects, the selected project's expenses,
  * the OCR pipeline and the export.
  */
@@ -320,13 +335,16 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _exportTrop = MutableStateFlow<File?>(null)
     val exportTrop: StateFlow<File?> = _exportTrop.asStateFlow()
 
-    /** Export déjà découpé, à partager d'un seul geste. */
-    private val _exportMultiple = MutableStateFlow<List<File>?>(null)
-    val exportMultiple: StateFlow<List<File>?> = _exportMultiple.asStateFlow()
+    /** Un mail prêt à partir, avec son rang quand l'envoi est découpé. */
+    private val _envoi = MutableStateFlow<Envoi?>(null)
+    val envoi: StateFlow<Envoi?> = _envoi.asStateFlow()
 
-    /** Justificatifs seuls en PDF, prêts à être envoyés à l'adresse du profil. */
-    private val _justificatifsPdf = MutableStateFlow<List<File>?>(null)
-    val justificatifsPdf: StateFlow<List<File>?> = _justificatifsPdf.asStateFlow()
+    /** L'envoi qui attend son tour : proposé par un dialogue, jamais imposé. */
+    private val _envoiSuivant = MutableStateFlow<Envoi?>(null)
+    val envoiSuivant: StateFlow<Envoi?> = _envoiSuivant.asStateFlow()
+
+    private var planEnvois: List<Envoi> = emptyList()
+    private var rangEnvoi = 0
 
     /** Ce qu'il faut pour reconstruire les parties sans relire la base. */
     private val _projetExporte = MutableStateFlow<Projet?>(null)
@@ -829,7 +847,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Envoie les justificatifs seuls, en PDF, à l'adresse email du profil du
      * projet : ni ZIP, ni classeur Excel. C'est ce qu'attend la personne qui
-     * reçoit les pièces pour les classer.
+     * reçoit les pièces pour les classer. Au-delà de la limite d'un mail, les
+     * pièces partent en plusieurs mails, proposés l'un après l'autre.
      */
     fun envoyerJustificatifsPdf() {
         val projet = _projet.value ?: return
@@ -851,13 +870,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 _emailExport.value = profil?.emailDestinataire?.takeIf { it.isNotBlank() }
                     ?: _parametres.value.emailDestinataire
-                _justificatifsPdf.value = fichiers
-                val destinataire = _emailExport.value?.takeIf { it.isNotBlank() }
-                _message.value = if (destinataire != null) {
-                    "${fichiers.size} justificatif(s) PDF pour $destinataire"
-                } else {
-                    "${fichiers.size} justificatif(s) PDF : aucun email dans le profil"
-                }
+                val sujet = "Justificatifs · ${projet.nom} · ${_parametres.value.mention}"
+                lancerEnvois(
+                    ExportManager.repartirEnEnvois(fichiers).map { lot ->
+                        Envoi(lot, "application/pdf", sujet, 0, 0)
+                    },
+                    "PDF",
+                )
             } catch (e: Exception) {
                 Diag.record("export/pdf", e)
                 _message.value = "Envoi des PDF impossible : ${e.message ?: "erreur"}"
@@ -867,11 +886,58 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun justificatifsPdfConsommes() {
-        _justificatifsPdf.value = null
+    /**
+     * Met les envois en file : le premier part tout de suite, les suivants
+     * attendent leur tour. L'app ne peut pas envoyer à la place de la
+     * messagerie : chaque mail se valide dans son application.
+     */
+    private fun lancerEnvois(lots: List<Envoi>, quoi: String) {
+        val sujetBase = lots.firstOrNull()?.sujet.orEmpty()
+        val plan = lots.mapIndexed { index, lot ->
+            val sujet = if (lots.size > 1) "$sujetBase (${index + 1}/${lots.size})" else sujetBase
+            lot.copy(sujet = sujet, rang = index + 1, total = lots.size)
+        }
+        planEnvois = plan
+        rangEnvoi = 0
+        _envoi.value = plan.firstOrNull()
+        _envoiSuivant.value = plan.getOrNull(1)
+        val destinataire = _emailExport.value?.takeIf { it.isNotBlank() }
+        _message.value = when {
+            plan.isEmpty() -> "Rien à envoyer"
+            plan.size == 1 && destinataire != null ->
+                "${plan[0].fichiers.size} fichier(s) $quoi pour $destinataire"
+            plan.size == 1 -> "${plan[0].fichiers.size} fichier(s) $quoi : aucun email dans le profil"
+            else -> "$quoi découpé en ${plan.size} mails (max 10 Mo chacun)" +
+                if (destinataire != null) " pour $destinataire" else " : aucun email dans le profil"
+        }
+        if (plan.size == 1) planEnvois = emptyList()
     }
 
-    /** Découpe l'export en attente en deux archives de poids comparable. */
+    fun envoiConsomme() {
+        _envoi.value = null
+    }
+
+    /** Fait partir l'envoi proposé, puis propose le suivant s'il en reste un. */
+    fun envoyerEnvoiSuivant() {
+        if (rangEnvoi + 1 >= planEnvois.size) {
+            arreterEnvois()
+            return
+        }
+        rangEnvoi += 1
+        _envoi.value = planEnvois[rangEnvoi]
+        _envoiSuivant.value = planEnvois.getOrNull(rangEnvoi + 1)
+    }
+
+    /** Interrompt la suite : les envois pas encore partis sont abandonnés. */
+    fun arreterEnvois() {
+        val restants = (planEnvois.size - rangEnvoi - 1).coerceAtLeast(0)
+        planEnvois = emptyList()
+        rangEnvoi = 0
+        _envoiSuivant.value = null
+        if (restants > 0) _message.value = "Envoi arrêté : $restants mail(s) non parti(s)"
+    }
+
+    /** Découpe l'export en attente en archives qui tiennent chacune dans un mail. */
     fun decouperExport() {
         val fichier = _exportTrop.value ?: return
         val projet = _projetExporte.value
@@ -890,12 +956,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 // L'archive complète est remplacée par ses parties : pas de doublon
                 // de 20 Mo qui traîne dans filesDir.
                 if (parties.size > 1) fichier.delete()
-                _exportMultiple.value = parties
-                _message.value = if (parties.size > 1) {
-                    "Export découpé en ${parties.size} parties"
-                } else {
-                    "Rien à découper : tout tient dans la première partie"
+                if (parties.size == 1) {
+                    _export.value = parties[0]
+                    _message.value = "Rien à découper : tout tient dans une seule archive"
+                    return@launch
                 }
+                val sujet = "Notes de frais · ${projet.nom} · ${_parametres.value.mention}"
+                lancerEnvois(parties.map { Envoi(listOf(it), "application/zip", sujet, 0, 0) }, "ZIP")
             } catch (e: Exception) {
                 Diag.record("export/decoupage", e)
                 _message.value = "Découpage impossible : ${e.message ?: "erreur"}"
@@ -916,10 +983,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         _exportTrop.value?.delete()
         _exportTrop.value = null
         _message.value = "Export annulé"
-    }
-
-    fun exportMultipleConsomme() {
-        _exportMultiple.value = null
     }
 
     private fun tailleLisible(octets: Long): String {

@@ -195,10 +195,10 @@ object ExportManager {
     }
 
     /**
-     * Découpe l'export en deux archives de poids comparable quand il dépasse
-     * [SEUIL_DECOUPAGE] : le récap part dans la première, les justificatifs sont
-     * répartis par taille. Deux ZIP utilisables tels quels, plutôt qu'une
-     * archive binaire à recoller sur un téléphone.
+     * Découpe l'export en autant d'archives que nécessaire pour qu'aucune ne
+     * dépasse [SEUIL_DECOUPAGE] : le récap part dans la première, les
+     * justificatifs sont répartis par taille. Des ZIP utilisables tels quels,
+     * plutôt qu'une archive binaire à recoller sur un téléphone.
      */
     suspend fun decouper(
         context: Context,
@@ -224,46 +224,75 @@ object ExportManager {
                     .filter { it.exists() }
                     .sumOf { it.length() }
             }
-            val (premiere, seconde) = repartirEnDeux(avecFichiers, poids)
+            val tas = repartirEnTas(avecFichiers, poids, SEUIL_DECOUPAGE)
 
             val base = "$prefixe${slug}_$horodatage"
-            val partie1 = File(dossierExports(context), "${base}_partie1.zip")
-            ecrireZip(context, partie1, feuilles, premiere)
-            if (seconde.isEmpty()) return@withContext listOf(partie1)
-
-            val partie2 = File(dossierExports(context), "${base}_partie2.zip")
-            // Le récap n'est mis qu'une fois : il liste tout le projet.
-            ecrireZip(context, partie2, emptyList(), seconde)
-            listOf(partie1, partie2)
+            tas.mapIndexed { index, contenu ->
+                val partie = File(dossierExports(context), "${base}_partie${index + 1}.zip")
+                // Le récap n'est mis qu'une fois : il liste tout le projet.
+                ecrireZip(context, partie, if (index == 0) feuilles else emptyList(), contenu)
+                partie
+            }
         }
 
     /**
-     * Répartit les justificatifs en deux tas de poids comparable : le premier
-     * reçoit le récap. Les plus grosses pièces sont placées d'abord, toujours
-     * dans le tas le plus léger, puis l'ordre chronologique de l'export est
-     * rétabli dans chaque partie (l'ordre des PDF doit rester lisible).
+     * Répartit les justificatifs en autant de tas qu'il faut pour qu'aucun ne
+     * dépasse [seuil], le premier recevant le récap : les plus grosses pièces
+     * sont placées d'abord, toujours dans le tas le plus léger qui les accepte,
+     * puis l'ordre chronologique de l'export est rétabli dans chaque partie
+     * (l'ordre des PDF doit rester lisible). Une pièce plus lourde que le seuil
+     * part seule dans son tas, sinon elle ne partirait jamais.
      */
-    fun repartirEnDeux(
+    fun repartirEnTas(
         justificatifs: List<Justificatif>,
         poids: Map<Justificatif, Long>,
-    ): Pair<List<Justificatif>, List<Justificatif>> {
-        if (justificatifs.size <= 1) return justificatifs to emptyList()
+        seuil: Long = SEUIL_DECOUPAGE,
+    ): List<List<Justificatif>> {
+        if (justificatifs.isEmpty()) return emptyList()
         val rang = justificatifs.withIndex().associate { (index, justificatif) -> justificatif to index }
-        val premiere = mutableListOf<Justificatif>()
-        val seconde = mutableListOf<Justificatif>()
-        var poidsPremiere = 0L
-        var poidsSeconde = 0L
+        val tas = mutableListOf<MutableList<Justificatif>>()
+        val charges = mutableListOf<Long>()
         justificatifs.sortedByDescending { poids[it] ?: 0L }.forEach { justificatif ->
             val taille = poids[justificatif] ?: 0L
-            if (poidsPremiere <= poidsSeconde) {
-                premiere.add(justificatif)
-                poidsPremiere += taille
+            val cible = charges.indices
+                .filter { charges[it] + taille <= seuil }
+                .minByOrNull { charges[it] }
+            if (cible == null) {
+                tas.add(mutableListOf(justificatif))
+                charges.add(taille)
             } else {
-                seconde.add(justificatif)
-                poidsSeconde += taille
+                tas[cible].add(justificatif)
+                charges[cible] += taille
             }
         }
-        return premiere.sortedBy { rang[it] } to seconde.sortedBy { rang[it] }
+        // Le tas qui commence par la plus ancienne dépense devient la partie 1.
+        return tas
+            .map { contenu -> contenu.sortedBy { rang[it] } }
+            .sortedBy { partie -> rang[partie.first()] ?: Int.MAX_VALUE }
+    }
+
+    /**
+     * Regroupe des fichiers en envois dont chacun reste sous [seuil]. Un mail
+     * alourdi par l'encodage des pièces jointes (base64, +33 %) atteint la
+     * limite du serveur d'envoi bien avant le poids réel des fichiers : on
+     * découpe donc les envois, quitte à faire plusieurs mails.
+     */
+    fun repartirEnEnvois(fichiers: List<File>, seuil: Long = SEUIL_DECOUPAGE): List<List<File>> {
+        val envois = mutableListOf<List<File>>()
+        var courant = mutableListOf<File>()
+        var charge = 0L
+        for (fichier in fichiers) {
+            val taille = fichier.length()
+            if (courant.isNotEmpty() && charge + taille > seuil) {
+                envois.add(courant)
+                courant = mutableListOf()
+                charge = 0L
+            }
+            courant.add(fichier)
+            charge += taille
+        }
+        if (courant.isNotEmpty()) envois.add(courant)
+        return envois
     }
 
     /** Écrit une archive : le récap (si fourni) puis les justificatifs. */
