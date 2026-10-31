@@ -68,16 +68,16 @@ class TrajetGaresTest {
         val detail = ExportManager.feuilles(Projet(nom = "Formation CNCC"), listOf(depense)).first()
 
         val entetes = detail.lignes[0].map { it.texte }
-        assertEquals("Sens", entetes[5])
-        assertEquals("Gare départ", entetes[6])
-        assertEquals("Gare arrivée", entetes[7])
-        assertEquals("Date retour", entetes[8])
+        assertEquals("Sens", entetes[6])
+        assertEquals("Gare départ", entetes[7])
+        assertEquals("Gare arrivée", entetes[8])
+        assertEquals("Date retour", entetes[9])
 
         val ligne = detail.lignes[1]
-        assertEquals("Aller-retour", ligne[5].texte)
-        assertEquals("Paris Gare de Lyon", ligne[6].texte)
-        assertEquals("Lyon Part-Dieu", ligne[7].texte)
-        assertEquals("15/10/2026", ligne[8].texte)
+        assertEquals("Aller-retour", ligne[6].texte)
+        assertEquals("Paris Gare de Lyon", ligne[7].texte)
+        assertEquals("Lyon Part-Dieu", ligne[8].texte)
+        assertEquals("15/10/2026", ligne[9].texte)
     }
 
     @Test
@@ -86,13 +86,13 @@ class TrajetGaresTest {
         val total = detail.lignes.last()
 
         assertEquals("TOTAL", total[0].texte)
-        // 22 colonnes de détail : le total tombe sur « Montant EUR », la TVA et
+        // 23 colonnes de détail : le total tombe sur « Montant EUR », la TVA et
         // les kilomètres, sans se décaler quand une colonne est ajoutée.
-        assertEquals(22, total.size)
-        assertEquals(45.0, total[15].nombre ?: 0.0, 0.001)
-        assertEquals(0.0, total[18].nombre ?: 0.0, 0.001)
+        assertEquals(23, total.size)
+        assertEquals(45.0, total[16].nombre ?: 0.0, 0.001)
         assertEquals(0.0, total[19].nombre ?: 0.0, 0.001)
-        assertTrue((total[21].texte ?: "").contains("dépense"))
+        assertEquals(0.0, total[20].nombre ?: 0.0, 0.001)
+        assertTrue((total[22].texte ?: "").contains("dépense"))
     }
 
     @Test

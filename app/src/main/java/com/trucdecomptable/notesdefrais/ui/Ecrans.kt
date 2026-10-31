@@ -418,6 +418,7 @@ fun EcranProjet(
             d.libelle.contains(recherche, ignoreCase = true) ||
                 d.typeDepense.label.contains(recherche, ignoreCase = true) ||
                 d.moyenPaiement.contains(recherche, ignoreCase = true) ||
+                d.organisme.contains(recherche, ignoreCase = true) ||
                 d.participants.contains(recherche, ignoreCase = true) ||
                 d.societeParticipant.contains(recherche, ignoreCase = true) ||
                 Dates.affichage(d.date).contains(recherche) ||
@@ -643,6 +644,7 @@ private fun LigneDepense(
                     maxLines = 1,
                 )
                 val details = listOfNotNull(
+                    depense.organisme.takeIf { it.isNotBlank() },
                     depense.moyenPaiement.takeIf { it.isNotBlank() },
                     depense.participants.takeIf { it.isNotBlank() },
                 ).joinToString(" · ")

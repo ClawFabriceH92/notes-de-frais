@@ -69,6 +69,7 @@ fun DialogueDepense(
     tauxPour: (String, String) -> TauxBdf.Taux? = { _, _ -> null },
     onAjouterPiece: ((android.net.Uri) -> Unit)? = null,
     moyensPaiement: List<String> = emptyList(),
+    organismes: List<String> = emptyList(),
     onRecadrerPiece: ((String, android.graphics.Bitmap) -> Unit)? = null,
     projetsCibles: List<com.trucdecomptable.notesdefrais.data.Projet> = emptyList(),
     onDeplacer: ((com.trucdecomptable.notesdefrais.data.Projet) -> Unit)? = null,
@@ -84,6 +85,7 @@ fun DialogueDepense(
     var choixDate by remember { mutableStateOf(false) }
     var refacturable by remember { mutableStateOf(initiale.refacturable) }
     var paiement by remember { mutableStateOf(initiale.moyenPaiement) }
+    var organisme by remember { mutableStateOf(initiale.organisme) }
     var sens by remember { mutableStateOf(initiale.sensTrajet) }
     var gareDepart by remember { mutableStateOf(initiale.gareDepart) }
     var gareArrivee by remember { mutableStateOf(initiale.gareArrivee) }
@@ -322,6 +324,36 @@ fun DialogueDepense(
                     )
                 }
 
+                // Organisme de formation : FOROM, CNCC Formation, ou un nom libre.
+                // La liste permanente se règle dans le paramétrage ; un nom qui
+                // n'y figure plus garde sa puce, donc rien n'est perdu.
+                Text("Organisme (formation)", style = MaterialTheme.typography.labelLarge)
+                val optionsOrganismes = remember(organismes, organisme) {
+                    (organismes + organisme)
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .distinct()
+                }
+                if (optionsOrganismes.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        optionsOrganismes.forEach { nom ->
+                            PuceChoix(
+                                selected = organisme == nom,
+                                onClick = { organisme = if (organisme == nom) "" else nom },
+                                label = { Text(nom) },
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = organisme,
+                    onValueChange = { organisme = it },
+                    label = { Text("Organisme (libre)") },
+                    placeholder = { Text("facultatif · un nom saisi ici reste sur cette dépense") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = ventiler, onCheckedChange = { ventiler = it })
                     Spacer(Modifier.padding(start = 8.dp))
@@ -405,6 +437,7 @@ fun DialogueDepense(
                             tvaTauxBp = if (ventiler) tauxTva else null,
                             refacturable = refacturable,
                             moyenPaiement = paiement.trim(),
+                            organisme = organisme.trim(),
                             sensTrajet = if (typeCourant.trajetDemande) sens else "",
                             gareDepart = if (typeCourant.trajetDemande) gareDepart.trim() else "",
                             gareArrivee = if (typeCourant.trajetDemande) gareArrivee.trim() else "",

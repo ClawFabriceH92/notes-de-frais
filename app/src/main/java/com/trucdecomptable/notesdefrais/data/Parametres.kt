@@ -32,6 +32,12 @@ data class Parametres(
     val codeAccesHash: String = "",
     /** Cards and other ways to pay, as Fabrice names them ("CB BNP", "CB perso"). */
     val moyensPaiement: List<String> = MOYENS_PAIEMENT_DEFAUT,
+    /**
+     * Organismes de formation proposés sur une dépense. Liste permanente, mais
+     * la dépense garde le nom qu'elle portait : en retirer un ici ne change
+     * rien aux dépenses déjà enregistrées.
+     */
+    val organismes: List<String> = ORGANISMES_DEFAUT,
     /** Pre-selected in the expense form; empty means "nothing pre-selected". */
     val moyenPaiementDefaut: String = MOYENS_PAIEMENT_DEFAUT.first(),
     /** Set once the expenses recorded before the feature got the default card. */
@@ -84,6 +90,7 @@ data class Parametres(
         put("zoneParis", zoneParis)
         put("codeAccesHash", codeAccesHash)
         put("moyensPaiement", JSONArray(moyensPaiement))
+        put("organismes", JSONArray(organismes))
         put("moyenPaiementDefaut", moyenPaiementDefaut)
         put("paiementRempliAuto", paiementRempliAuto)
         put("pieceEnGrand", pieceEnGrand)
@@ -96,6 +103,13 @@ data class Parametres(
     companion object {
         /** Enough to be usable on the first launch; renamed in the settings. */
         val MOYENS_PAIEMENT_DEFAUT = listOf("CB", "Espèces", "Payé par un tiers")
+
+        /**
+         * Les organismes que Fabrice retrouve le plus souvent. La liste se
+         * complète et se vide dans le paramétrage ; un nom saisi librement sur
+         * une dépense n'entre pas ici tout seul.
+         */
+        val ORGANISMES_DEFAUT = listOf("FOROM", "CNCC Formation")
 
         fun depuisJson(json: JSONObject): Parametres = Parametres(
             nom = json.optString("nom", ""),
@@ -118,6 +132,11 @@ data class Parametres(
                     .mapNotNull { tableau.optString(it).trim().takeIf(String::isNotEmpty) }
                     .distinct()
             } ?: MOYENS_PAIEMENT_DEFAUT,
+            organismes = json.optJSONArray("organismes")?.let { tableau ->
+                (0 until tableau.length())
+                    .mapNotNull { tableau.optString(it).trim().takeIf(String::isNotEmpty) }
+                    .distinct()
+            } ?: ORGANISMES_DEFAUT,
             moyenPaiementDefaut = json.optString("moyenPaiementDefaut", MOYENS_PAIEMENT_DEFAUT.first()),
             paiementRempliAuto = json.optBoolean("paiementRempliAuto", false),
             pieceEnGrand = json.optBoolean("pieceEnGrand", true),

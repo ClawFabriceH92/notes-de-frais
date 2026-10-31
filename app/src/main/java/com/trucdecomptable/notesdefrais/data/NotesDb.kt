@@ -119,7 +119,7 @@ interface NotesDao {
     suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class, Profil::class], version = 12, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class, Profil::class], version = 13, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
     abstract fun profilsDao(): ProfilsDao
@@ -247,6 +247,17 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        /**
+         * Organisme de formation de la dépense (« FOROM », « CNCC Formation »,
+         * ou libre). Texte sur la dépense : vider la liste du paramétrage ne
+         * touche pas aux dépenses déjà enregistrées.
+         */
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE depenses ADD COLUMN organisme TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
@@ -255,7 +266,7 @@ abstract class NotesDb : RoomDatabase() {
             ).addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                 MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
-                MIGRATION_10_11, MIGRATION_11_12,
+                MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
             ).build().also { instance = it }
         }
 

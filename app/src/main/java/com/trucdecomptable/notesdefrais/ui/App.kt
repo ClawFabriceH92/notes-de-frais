@@ -363,6 +363,7 @@ fun Racine(
             onValider = vm::validerBrouillon,
             tauxPour = vm::tauxBdf,
             moyensPaiement = moyensPaiement,
+            organismes = parametres.organismes,
         )
     }
 
@@ -375,6 +376,7 @@ fun Racine(
             tauxPour = vm::tauxBdf,
             onAjouterPiece = { uri -> vm.ajouterPieceJointe(initiale, uri) },
             moyensPaiement = moyensPaiement,
+            organismes = parametres.organismes,
             onRecadrerPiece = { nom, bitmap -> vm.recadrerPiece(initiale, nom, bitmap) },
             // Un projet clôturé est en lecture seule : il n'est pas proposé.
             projetsCibles = tousProjets.filter { !it.cloture && it.id != initiale.projetId },

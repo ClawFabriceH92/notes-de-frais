@@ -171,11 +171,18 @@ data class Depense(
     /** Extra attachments (invoice, back of the receipt), names joined by '|'. */
     val fichiersSupplementaires: String = "",
     /**
-     * How it was paid ("CB pro", "Espèces"…). Stores the label itself rather
-     * than an index into the settings list, so renaming a card never rewrites
-     * past expenses.
+     * Comment elle a été payée ("CB pro", "Espèces"…). On stocke le libellé
+     * lui-même plutôt qu'un index dans la liste du paramétrage : renommer une
+     * carte ne réécrit jamais les dépenses déjà saisies.
      */
     val moyenPaiement: String = "",
+    /**
+     * Organisme de formation rattaché à la dépense (« FOROM », « CNCC
+     * Formation », ou un nom saisi librement). Comme le moyen de paiement, on
+     * garde le libellé et non un identifiant : retirer un organisme de la liste
+     * du paramétrage laisse intactes les dépenses qui le portent.
+     */
+    val organisme: String = "",
     /**
      * Aller simple ou aller-retour, pour le train et l'avion. Vide quand la
      * question ne se pose pas.

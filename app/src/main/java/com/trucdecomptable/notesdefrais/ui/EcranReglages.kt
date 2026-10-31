@@ -87,6 +87,9 @@ fun EcranReglages(
     var moyens by remember { mutableStateOf(initial.moyensPaiement) }
     var paiementDefaut by remember { mutableStateOf(initial.moyenPaiementDefaut) }
     var nouveauMoyen by remember { mutableStateOf<String?>(null) }
+    // Organismes de formation : liste permanente, sans notion de défaut.
+    var organismes by remember { mutableStateOf(initial.organismes) }
+    var nouvelOrganisme by remember { mutableStateOf<String?>(null) }
     var pieceEnGrand by remember { mutableStateOf(initial.pieceEnGrand) }
     var recadrageAuto by remember { mutableStateOf(initial.recadrageAuto) }
     var profilEdite by remember { mutableStateOf<Profil?>(null) }
@@ -110,6 +113,7 @@ fun EcranReglages(
         zoneParis = zoneParis,
         codeAccesHash = if (code.isBlank()) codeHash else com.trucdecomptable.notesdefrais.util.empreinte(code),
         moyensPaiement = moyens,
+        organismes = organismes,
         moyenPaiementDefaut = paiementDefaut.takeIf { it in moyens }.orEmpty(),
         // Already done: saving the settings must not trigger it a second time.
         paiementRempliAuto = initial.paiementRempliAuto,
@@ -309,6 +313,27 @@ fun EcranReglages(
             }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Organismes de formation", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Proposés sur chaque dépense, avec la possibilité d'en saisir un autre. " +
+                    "En retirer un ici ne change rien aux dépenses déjà enregistrées : " +
+                    "elles gardent le nom qu'elles portaient.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            organismes.forEach { nom ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(nom, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { organismes = organismes - nom }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Retirer $nom")
+                    }
+                }
+            }
+            OutlinedButton(onClick = { nouvelOrganisme = "" }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Text("  Ajouter un organisme")
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Text("Verrouillage", style = MaterialTheme.typography.titleMedium)
             Text(
                 if (initial.verrouillageActif) "Code d'accès activé. Saisir un nouveau code pour le changer."
@@ -386,6 +411,20 @@ fun EcranReglages(
                     if (paiementDefaut.isBlank()) paiementDefaut = propre
                 }
                 nouveauMoyen = null
+            },
+        )
+    }
+
+    nouvelOrganisme?.let { valeur ->
+        DialogueTexte(
+            titre = "Nouvel organisme",
+            libelle = "Nom (ex. FOROM)",
+            valeurInitiale = valeur,
+            onAnnuler = { nouvelOrganisme = null },
+            onValider = { nom ->
+                val propre = nom.trim()
+                if (propre.isNotEmpty()) organismes = (organismes + propre).distinct()
+                nouvelOrganisme = null
             },
         )
     }

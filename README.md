@@ -58,6 +58,13 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   dans le paramétrage (plusieurs CB, espèces, virement, **payé par un tiers**), un
   moyen par défaut est proposé sur chaque nouvelle dépense, et le total par moyen
   apparaît dans la synthèse de l'export.
+- **Organisme de formation** (v1.14.0) : sur chaque dépense, un organisme se
+  coche parmi une **liste permanente** réglée dans le paramétrage (FOROM, CNCC
+  Formation au départ, complétable, supprimable) ou se saisit librement. La
+  dépense enregistre le **nom** de l'organisme, pas un renvoi vers la liste :
+  retirer un organisme du paramétrage ne change rien aux dépenses déjà saisies,
+  et son nom continue de s'afficher sur la fiche, dans la liste du projet et
+  dans la colonne « Organisme » du récap Excel.
 - **Profils de société** : une société par jeu de projets (deux cabinets, deux
   SARL…). L'écran Projets filtre sur la société choisie, l'export reprend son nom,
   son SIRET, son adresse et son destinataire, et **chaque société a son propre
@@ -166,14 +173,15 @@ Secrets CI : `NOTESDEFRAIS_KEYSTORE_B64`, `NOTESDEFRAIS_KEYSTORE_PASSWORD`,
 
 ## Tests
 
-72 tests unitaires JVM : lecture des tickets (12 formats), générateur xlsx
+113 tests unitaires JVM : lecture des tickets (12 formats), générateur xlsx
 (vérifié en dézippant le classeur), nommage et numérotation des justificatifs,
 dates françaises (saisie et affichage), aller-retour et invités d'un repas,
 profils de société dans l'export, validation du SIRET, conversion de devises,
 ventilation TVA, barème kilométrique 2026 (exemples officiels de
 l'administration), plafonds d'exonération URSSAF 2026, détection de doublons,
 comparaison de versions et lecture du manifeste de MAJ, paramétrage des moyens de
-paiement.
+paiement, et organisme de formation (nom conservé quand la liste du paramétrage
+change).
 
 ## Technique
 

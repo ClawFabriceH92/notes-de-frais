@@ -39,7 +39,7 @@ object ExportManager {
      * Nombre de colonnes de la feuille « Dépenses ». La ligne de totaux se cale
      * par index dessus : ajouter une colonne ne décale plus les montants.
      */
-    private const val COLONNES_DETAIL = 22
+    private const val COLONNES_DETAIL = 23
 
     /**
      * One line of the export: the expense, its running number in the archive
@@ -417,10 +417,11 @@ object ExportManager {
     ): List<XlsxWriter.Feuille> {
         val detail = XlsxWriter.Feuille("Dépenses")
         detail.largeurs.addAll(
-            listOf(6, 12, 18, 26, 18, 16, 24, 24, 12, 18, 20, 22, 12, 8, 10, 12, 8, 12, 12, 10, 12, 46),
+            listOf(6, 12, 18, 26, 18, 24, 16, 24, 24, 12, 18, 20, 22, 12, 8, 10, 12, 8, 12, 12, 10, 12, 46),
         )
         detail.ligne(
             entete("N°"), entete("Date"), entete("Type"), entete("Libellé"), entete("Paiement"),
+            entete("Organisme"),
             entete("Sens"), entete("Gare départ"), entete("Gare arrivée"), entete("Date retour"),
             entete("Invités"), entete("Société invités"), entete("Motif"),
             entete("Montant"), entete("Devise"),
@@ -463,6 +464,7 @@ object ExportManager {
                 XlsxWriter.Cellule(texte = d.typeDepense.label),
                 XlsxWriter.Cellule(texte = d.libelle),
                 XlsxWriter.Cellule(texte = d.moyenPaiement),
+                XlsxWriter.Cellule(texte = d.organisme),
                 XlsxWriter.Cellule(texte = d.sens?.label.orEmpty()),
                 // Train et avion : les gares et, pour un aller-retour, la date du
                 // retour. Vides pour les autres types de dépense.
@@ -491,10 +493,10 @@ object ExportManager {
         // colonne au détail ne décale plus les totaux.
         val total = MutableList(COLONNES_DETAIL) { XlsxWriter.Cellule() }
         total[0] = entete("TOTAL")
-        total[15] = XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT)
-        total[18] = XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.GRAS_MONTANT)
-        total[19] = XlsxWriter.Cellule(nombre = totalKm.toDouble())
-        total[21] = XlsxWriter.Cellule(texte = "$nbJustificatifs justificatif(s) pour ${plan.size} dépense(s)")
+        total[16] = XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT)
+        total[19] = XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.GRAS_MONTANT)
+        total[20] = XlsxWriter.Cellule(nombre = totalKm.toDouble())
+        total[22] = XlsxWriter.Cellule(texte = "$nbJustificatifs justificatif(s) pour ${plan.size} dépense(s)")
         detail.ligne(total)
 
         val synthese = XlsxWriter.Feuille("Synthèse")
