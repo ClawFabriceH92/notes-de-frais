@@ -14,6 +14,12 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   l'archivage propose « Envoyer et archiver » (PDF à l'adresse de la société, puis
   archivage) ; on peut aussi archiver sans envoyer. La date du dernier envoi est
   retenue et rappelée sur la fiche du projet (« envoyés le … »).
+- **Justificatifs allégés** (v1.13.0) : une photo de plus de 5 Mo est
+  ré-encodée à l'entrée (côté le plus long ramené à 2560 px, qualité 85 puis 75
+  puis 65 jusqu'à passer sous 5 Mo). La pièce reste lisible pour l'OCR et pour
+  la comptabilité, et l'export ne dépasse plus la limite d'un mail pour deux
+  photos. Un PDF n'est jamais touché. Le menu d'export du projet propose
+  « Alléger les justificatifs (> 5 Mo) » pour les photos déjà enregistrées.
 - **Export volumineux** : au-delà de 10 Mo, l'app propose de découper le ZIP en
   autant d'archives qu'il faut pour qu'aucune ne dépasse 10 Mo. Le récap part
   dans la première, les justificatifs sont répartis par taille et l'ordre

@@ -328,6 +328,7 @@ fun Racine(
                 onManuel = vm::ajouterManuellement,
                 onExport = vm::exporter,
                 onEnvoyerPdf = vm::envoyerJustificatifsPdf,
+                onAlleger = vm::allegerJustificatifs,
                 emailJustificatifs = profils.firstOrNull { it.id == courant.profilId }
                     ?.emailDestinataire?.takeIf { it.isNotBlank() }
                     ?: parametres.emailDestinataire.takeIf { it.isNotBlank() },

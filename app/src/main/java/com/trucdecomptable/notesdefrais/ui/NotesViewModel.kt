@@ -18,6 +18,7 @@ import com.trucdecomptable.notesdefrais.data.Projet
 import com.trucdecomptable.notesdefrais.data.TauxBdf
 import com.trucdecomptable.notesdefrais.data.TauxBdfClient
 import com.trucdecomptable.notesdefrais.data.TypeDepense
+import com.trucdecomptable.notesdefrais.util.Compression
 import com.trucdecomptable.notesdefrais.export.ExportManager
 import com.trucdecomptable.notesdefrais.export.FeuilleDeRoutePdf
 import com.trucdecomptable.notesdefrais.ocr.ReceiptOcr
@@ -1043,6 +1044,53 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Diag.record("export/decoupage", e)
                 _message.value = "Découpage impossible : ${e.message ?: "erreur"}"
+            } finally {
+                _traitement.value = false
+            }
+        }
+    }
+
+    /**
+     * Allège les justificatifs déjà enregistrés du projet ouvert : les photos
+     * de plus de 5 Mo sont ré-encodées (voir [Compression]). C'est ce qui fait
+     * passer un export de 22 Mo à quelques Mo, sans re-photographier les
+     * tickets et sans rien perdre de lisible.
+     */
+    fun allegerJustificatifs() {
+        val projet = _projet.value ?: return
+        viewModelScope.launch {
+            try {
+                _traitement.value = true
+                val liste = withContext(Dispatchers.IO) { dao.depensesSync(projet.id) }
+                val dossier = ExportManager.dossierJustificatifs(getApplication())
+                val (nombre, avant, apres) = withContext(Dispatchers.IO) {
+                    var faits = 0
+                    var octetsAvant = 0L
+                    var octetsApres = 0L
+                    val vus = mutableSetOf<String>()
+                    for (depense in liste) {
+                        for (nom in depense.tousLesFichiers) {
+                            if (!vus.add(nom)) continue
+                            val fichier = File(dossier, nom)
+                            if (!fichier.isFile) continue
+                            val resultat = runCatching { Compression.compresser(fichier) }
+                                .onFailure { Diag.record("compression", it) }
+                                .getOrNull() ?: continue
+                            faits++
+                            octetsAvant += resultat.avant
+                            octetsApres += resultat.apres
+                        }
+                    }
+                    Triple(faits, octetsAvant, octetsApres)
+                }
+                _message.value = when {
+                    nombre == 0 -> "Aucun justificatif de plus de 5 Mo à alléger"
+                    else -> "$nombre justificatif(s) allégé(s) : " +
+                        "${Compression.mo(avant)} → ${Compression.mo(apres)}"
+                }
+            } catch (e: Exception) {
+                Diag.record("compression/projet", e)
+                _message.value = "Allègement impossible : ${e.message ?: "erreur"}"
             } finally {
                 _traitement.value = false
             }

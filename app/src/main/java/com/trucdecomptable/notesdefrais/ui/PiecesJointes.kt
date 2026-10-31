@@ -585,9 +585,14 @@ private fun decouper(source: ImageBitmap, rect: Rect, zone: IntSize): Bitmap? {
     }.getOrNull()
 }
 
-/** Écrit un bitmap en JPEG 90 % dans le dossier des justificatifs. */
+/**
+ * Écrit un bitmap en JPEG 90 % dans le dossier des justificatifs. Un recadrage
+ * d'une grande photo peut encore dépasser 5 Mo : il est alors allégé, comme
+ * toute pièce qui entre dans l'app.
+ */
 fun enregistrerBitmap(context: Context, bitmap: Bitmap): File {
     val cible = File(ExportManager.dossierJustificatifs(context), "${java.util.UUID.randomUUID()}.jpg")
     FileOutputStream(cible).use { sortie -> bitmap.compress(Bitmap.CompressFormat.JPEG, 90, sortie) }
+    runCatching { com.trucdecomptable.notesdefrais.util.Compression.compresser(cible) }
     return cible
 }

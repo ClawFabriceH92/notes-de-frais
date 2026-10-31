@@ -11,6 +11,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.trucdecomptable.notesdefrais.export.ExportManager
+import com.trucdecomptable.notesdefrais.util.Compression
 import com.trucdecomptable.notesdefrais.util.Diag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -54,6 +55,9 @@ object ReceiptOcr {
             context.contentResolver.openInputStream(uri)?.use { complet ->
                 cible.outputStream().use { sortie -> complet.copyTo(sortie) }
             } ?: error("Fichier illisible")
+            // Une photo de 8 Mo n'apporte rien de plus qu'une photo de 800 Ko :
+            // elle est allégée tout de suite, avant même l'OCR.
+            alleger(cible)
             return cible
         }
     }
@@ -170,7 +174,10 @@ object ReceiptOcr {
 
         if (zone == null) {
             // Sans recadrage on garde quand même la photo remise d'aplomb.
-            if (oriente !== bitmap) enregistrerBitmap(fichier, oriente)
+            if (oriente !== bitmap) {
+                enregistrerBitmap(fichier, oriente)
+                alleger(fichier)
+            }
             return@withContext Lecture(resultat.text, recadre = false)
         }
 
@@ -178,7 +185,10 @@ object ReceiptOcr {
             Bitmap.createBitmap(oriente, zone.left, zone.top, zone.largeur, zone.hauteur)
         }.getOrNull() ?: return@withContext Lecture(resultat.text, recadre = false)
 
-        if (decoupe !== oriente) enregistrerBitmap(fichier, decoupe)
+        if (decoupe !== oriente) {
+            enregistrerBitmap(fichier, decoupe)
+            alleger(fichier)
+        }
         Diag.record(
             "ocr/recadrage",
             "${fichier.name} ${oriente.width}×${oriente.height} -> " +
@@ -216,6 +226,25 @@ object ReceiptOcr {
                     continuation.resumeWithException(e)
                 }
         }
+
+    /**
+     * Allège une pièce de plus de 5 Mo (voir [Compression]). Silencieux : une
+     * compression ratée laisse simplement le fichier d'origine, jamais une
+     * pièce perdue.
+     */
+    private fun alleger(fichier: File) {
+        runCatching { Compression.compresser(fichier) }
+            .onSuccess { resultat ->
+                if (resultat != null) {
+                    Diag.record(
+                        "compression",
+                        "${fichier.name} ${Compression.mo(resultat.avant)} -> " +
+                            "${Compression.mo(resultat.apres)}",
+                    )
+                }
+            }
+            .onFailure { Diag.record("compression", it) }
+    }
 
     private fun enregistrerBitmap(cible: File, bitmap: Bitmap) {
         runCatching {

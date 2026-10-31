@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Unarchive
@@ -397,6 +398,7 @@ fun EcranProjet(
     onManuel: () -> Unit,
     onExport: () -> Unit,
     onEnvoyerPdf: () -> Unit = {},
+    onAlleger: () -> Unit = {},
     emailJustificatifs: String? = null,
     onOuvrirDepense: (Depense) -> Unit,
     onIndemniteKm: () -> Unit = {},
@@ -466,6 +468,13 @@ fun EcranProjet(
                                 text = { Text("Envoyer les justificatifs en PDF") },
                                 leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                                 onClick = { menuExport = false; onEnvoyerPdf() },
+                            )
+                            // Allège les photos déjà prises : un export de 22 Mo
+                            // retombe à quelques Mo sans re-photographier.
+                            DropdownMenuItem(
+                                text = { Text("Alléger les justificatifs (> 5 Mo)") },
+                                leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+                                onClick = { menuExport = false; onAlleger() },
                             )
                         }
                     }
