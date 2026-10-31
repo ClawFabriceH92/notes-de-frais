@@ -147,6 +147,7 @@ fun Racine(
             )
         } catch (e: Exception) {
             Diag.record("partage", e)
+            vm.signalerPartage(e)
         }
     }
 
@@ -154,7 +155,7 @@ fun Racine(
     fun partagerPlusieurs(fichiers: List<File>, type: String, sujet: String, email: String) {
         try {
             val uris = ArrayList(
-                fichiers.map { FileProvider.getUriForFile(context, "${'$'}{context.packageName}.fileprovider", it) },
+                fichiers.map { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it) },
             )
             val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                 this.type = type
@@ -162,19 +163,20 @@ fun Racine(
                 putExtra(Intent.EXTRA_SUBJECT, sujet)
                 if (email.isNotBlank()) {
                     putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
-                    putExtra(Intent.EXTRA_TEXT, "Notes de frais : ${'$'}sujet")
+                    putExtra(Intent.EXTRA_TEXT, "Notes de frais : $sujet")
                 }
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(
                 if (email.isNotBlank()) {
-                    Intent.createChooser(intent, "Envoyer à ${'$'}email")
+                    Intent.createChooser(intent, "Envoyer à $email")
                 } else {
                     Intent.createChooser(intent, "Envoyer les fichiers")
                 },
             )
         } catch (e: Exception) {
             Diag.record("partage/multiple", e)
+            vm.signalerPartage(e)
         }
     }
 
@@ -413,7 +415,7 @@ fun Racine(
             title = { Text("Export volumineux") },
             text = {
                 Text(
-                    "Le ZIP fait ${'$'}mo Mo, au-delà de la limite de 10 Mo pour un envoi simple. " +
+                    "Le ZIP fait $mo Mo, au-delà de la limite de 10 Mo pour un envoi simple. " +
                         "Le découper en plusieurs archives, une par mail ? Le récap reste dans la " +
                         "première, les justificatifs sont répartis, et rien n'est perdu.",
                 )
@@ -476,7 +478,7 @@ fun Racine(
             text = {
                 Text(
                     "Une fois le mail précédent parti, il reste ${suivant.fichiers.size} " +
-                        "fichier(s) (${'$'}mo Mo) à envoyer : ils ne tenaient pas dans le même " +
+                        "fichier(s) ($mo Mo) à envoyer : ils ne tenaient pas dans le même " +
                         "mail. Envoyer celui-ci maintenant ?",
                 )
             },

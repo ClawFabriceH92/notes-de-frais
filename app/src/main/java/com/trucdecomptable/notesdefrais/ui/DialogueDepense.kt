@@ -85,6 +85,9 @@ fun DialogueDepense(
     var refacturable by remember { mutableStateOf(initiale.refacturable) }
     var paiement by remember { mutableStateOf(initiale.moyenPaiement) }
     var sens by remember { mutableStateOf(initiale.sensTrajet) }
+    var gareDepart by remember { mutableStateOf(initiale.gareDepart) }
+    var gareArrivee by remember { mutableStateOf(initiale.gareArrivee) }
+    var dateRetour by remember { mutableStateOf(Dates.isoVersFr(initiale.dateRetour)) }
     var participants by remember { mutableStateOf(initiale.participants) }
     var societeParticipant by remember { mutableStateOf(initiale.societeParticipant) }
     var motifRepas by remember { mutableStateOf(initiale.motifRepas) }
@@ -111,10 +114,14 @@ fun DialogueDepense(
     }
 
     val montantCentimes = centimesDe(montant)
-    val valide = Dates.estValide(date) && montantCentimes != null && montantCentimes > 0L
     // Le type courant décide des questions à poser (trajet, invités) ; il sert
     // aussi au bouton Enregistrer, donc il vit hors du contenu du dialogue.
     val typeCourant = initiale.copy(type = type.name)
+    // La date de retour n'est demandée que pour un aller-retour : vide permise
+    // (billet non encore daté), mais une date incomplète bloque l'enregistrement.
+    val dateRetourDemandee = typeCourant.trajetDemande && sens == SensTrajet.ALLER_RETOUR.name
+    val dateRetourValide = !dateRetourDemandee || dateRetour.isBlank() || Dates.estValide(dateRetour)
+    val valide = Dates.estValide(date) && montantCentimes != null && montantCentimes > 0L && dateRetourValide
 
     AlertDialog(
         onDismissRequest = onAnnuler,
@@ -213,6 +220,47 @@ fun DialogueDepense(
                                 label = { Text(option.label) },
                             )
                         }
+                    }
+                    // Gares du trajet : sur un aller-retour, les mêmes gares
+                    // servent dans les deux sens, on ne les saisit qu'une fois.
+                    val mot = if (type == TypeDepense.TRAIN) "Gare" else "Aéroport"
+                    OutlinedTextField(
+                        value = gareDepart,
+                        onValueChange = { gareDepart = it },
+                        label = { Text("$mot de départ") },
+                        placeholder = { Text(if (type == TypeDepense.TRAIN) "Paris Gare de Lyon" else "Paris Orly") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = gareArrivee,
+                        onValueChange = { gareArrivee = it },
+                        label = { Text("$mot d'arrivée") },
+                        placeholder = { Text(if (type == TypeDepense.TRAIN) "Lyon Part-Dieu" else "Nice") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (dateRetourDemandee) {
+                        OutlinedTextField(
+                            value = dateRetour,
+                            onValueChange = { dateRetour = it },
+                            label = { Text("Date du retour (jj/mm/aaaa)") },
+                            placeholder = { Text("facultatif") },
+                            singleLine = true,
+                            isError = dateRetour.isNotBlank() && !Dates.estValide(dateRetour),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    // Ce que lira la comptabilité : les gares, le sens, le retour.
+                    val apercuTrajet = initiale.copy(
+                        type = type.name,
+                        sensTrajet = sens,
+                        gareDepart = gareDepart,
+                        gareArrivee = gareArrivee,
+                        dateRetour = if (dateRetourDemandee) Dates.frVersIso(dateRetour).orEmpty() else "",
+                    ).trajetLisible
+                    if (apercuTrajet.isNotBlank()) {
+                        Text("Trajet : $apercuTrajet", style = MaterialTheme.typography.bodySmall)
                     }
                 }
 
@@ -358,6 +406,9 @@ fun DialogueDepense(
                             refacturable = refacturable,
                             moyenPaiement = paiement.trim(),
                             sensTrajet = if (typeCourant.trajetDemande) sens else "",
+                            gareDepart = if (typeCourant.trajetDemande) gareDepart.trim() else "",
+                            gareArrivee = if (typeCourant.trajetDemande) gareArrivee.trim() else "",
+                            dateRetour = if (dateRetourDemandee) Dates.frVersIso(dateRetour).orEmpty() else "",
                             participants = if (typeCourant.repasDemande) participants.trim() else "",
                             societeParticipant = if (typeCourant.repasDemande) societeParticipant.trim() else "",
                             motifRepas = if (typeCourant.repasDemande) motifRepas.trim() else "",

@@ -119,7 +119,7 @@ interface NotesDao {
     suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class, Profil::class], version = 11, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class, Profil::class], version = 12, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
     abstract fun profilsDao(): ProfilsDao
@@ -234,6 +234,19 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        /**
+         * Gares de départ et d'arrivée d'un trajet en train (aéroport en avion),
+         * et date du retour d'un aller-retour. Les dépenses déjà saisies gardent
+         * des champs vides : rien à convertir.
+         */
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE depenses ADD COLUMN gareDepart TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE depenses ADD COLUMN gareArrivee TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE depenses ADD COLUMN dateRetour TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
@@ -242,7 +255,7 @@ abstract class NotesDb : RoomDatabase() {
             ).addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                 MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
-                MIGRATION_10_11,
+                MIGRATION_10_11, MIGRATION_11_12,
             ).build().also { instance = it }
         }
 

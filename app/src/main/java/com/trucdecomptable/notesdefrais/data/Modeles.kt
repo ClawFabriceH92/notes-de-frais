@@ -7,6 +7,7 @@ import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Update
+import com.trucdecomptable.notesdefrais.util.Dates
 import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -180,6 +181,18 @@ data class Depense(
      * question ne se pose pas.
      */
     val sensTrajet: String = "",
+    /**
+     * Gare de départ d'un trajet en train (aéroport de départ en avion) : ce que
+     * la comptabilité veut lire sur la ligne, à côté du montant.
+     */
+    val gareDepart: String = "",
+    /** Gare d'arrivée du trajet, même logique que [gareDepart]. */
+    val gareArrivee: String = "",
+    /**
+     * Date du retour d'un aller-retour (ISO yyyy-MM-dd). Vide pour un aller
+     * simple : le billet n'en porte pas.
+     */
+    val dateRetour: String = "",
     /** Repas : qui était là (nom et prénom), pour qui, et pourquoi. */
     val participants: String = "",
     val societeParticipant: String = "",
@@ -206,6 +219,37 @@ data class Depense(
             typeDepense == TypeDepense.RESTAURANT_SOIR
 
     val sens: SensTrajet? get() = SensTrajet.fromName(sensTrajet)
+
+    /**
+     * « Paris → Lyon » tel qu'il doit s'afficher. Une seule gare connue suffit
+     * (on ne complète jamais l'autre) ; rien quand aucune n'est saisie.
+     */
+    val gares: String
+        get() {
+            val depart = gareDepart.trim()
+            val arrivee = gareArrivee.trim()
+            return when {
+                depart.isBlank() -> arrivee
+                arrivee.isBlank() -> depart
+                else -> "$depart → $arrivee"
+            }
+        }
+
+    /**
+     * La ligne trajet complète : les gares, puis le sens, puis la date du
+     * retour. C'est ce que lisent le récap et les PDF, pour qu'un aller-retour
+     * ne se confonde pas avec un aller simple.
+     */
+    val trajetLisible: String
+        get() {
+            val sensTexte = when (sens) {
+                SensTrajet.ALLER_RETOUR -> "aller-retour"
+                SensTrajet.ALLER -> "aller simple"
+                null -> ""
+            }
+            val retour = dateRetour.takeIf { it.isNotBlank() }?.let { "retour le ${Dates.affichage(it)}" }.orEmpty()
+            return listOf(gares, sensTexte, retour).filter { it.isNotBlank() }.joinToString(" · ")
+        }
 
     val estIndemniteKm: Boolean get() = typeDepense == TypeDepense.INDENNITE_KM
 

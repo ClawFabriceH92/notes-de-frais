@@ -36,6 +36,12 @@ object ExportManager {
     const val SEUIL_DECOUPAGE = 10L * 1024 * 1024
 
     /**
+     * Nombre de colonnes de la feuille « Dépenses ». La ligne de totaux se cale
+     * par index dessus : ajouter une colonne ne décale plus les montants.
+     */
+    private const val COLONNES_DETAIL = 22
+
+    /**
      * One line of the export: the expense, its running number in the archive
      * and the exact file names written. The workbook and the ZIP are built from
      * the same list, so a renamed or duplicated file can never drift apart.
@@ -410,10 +416,13 @@ object ExportManager {
         profil: Profil? = null,
     ): List<XlsxWriter.Feuille> {
         val detail = XlsxWriter.Feuille("Dépenses")
-        detail.largeurs.addAll(listOf(6, 12, 18, 26, 18, 18, 14, 20, 12, 8, 10, 12, 8, 12, 12, 10, 12, 46))
+        detail.largeurs.addAll(
+            listOf(6, 12, 18, 26, 18, 16, 24, 24, 12, 18, 20, 22, 12, 8, 10, 12, 8, 12, 12, 10, 12, 46),
+        )
         detail.ligne(
             entete("N°"), entete("Date"), entete("Type"), entete("Libellé"), entete("Paiement"),
-            entete("Trajet"), entete("Invités"), entete("Société invités"), entete("Motif"),
+            entete("Sens"), entete("Gare départ"), entete("Gare arrivée"), entete("Date retour"),
+            entete("Invités"), entete("Société invités"), entete("Motif"),
             entete("Montant"), entete("Devise"),
             entete("Taux"), entete("Montant EUR"), entete("TVA %"), entete("HT EUR"), entete("TVA EUR"),
             entete("Distance km"), entete("Refacturable"),
@@ -455,6 +464,11 @@ object ExportManager {
                 XlsxWriter.Cellule(texte = d.libelle),
                 XlsxWriter.Cellule(texte = d.moyenPaiement),
                 XlsxWriter.Cellule(texte = d.sens?.label.orEmpty()),
+                // Train et avion : les gares et, pour un aller-retour, la date du
+                // retour. Vides pour les autres types de dépense.
+                XlsxWriter.Cellule(texte = d.gareDepart),
+                XlsxWriter.Cellule(texte = d.gareArrivee),
+                XlsxWriter.Cellule(texte = Dates.affichage(d.dateRetour).takeIf { d.dateRetour.isNotBlank() }.orEmpty()),
                 XlsxWriter.Cellule(texte = d.participants),
                 XlsxWriter.Cellule(texte = d.societeParticipant),
                 XlsxWriter.Cellule(texte = d.motifRepas),
@@ -473,19 +487,15 @@ object ExportManager {
         }
 
         detail.ligne()
-        detail.ligne(
-            entete("TOTAL"), XlsxWriter.Cellule(), XlsxWriter.Cellule(), XlsxWriter.Cellule(),
-            XlsxWriter.Cellule(), XlsxWriter.Cellule(), XlsxWriter.Cellule(), XlsxWriter.Cellule(),
-            XlsxWriter.Cellule(), XlsxWriter.Cellule(), XlsxWriter.Cellule(),
-            XlsxWriter.Cellule(),
-            XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT),
-            XlsxWriter.Cellule(),
-            XlsxWriter.Cellule(),
-            XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.GRAS_MONTANT),
-            XlsxWriter.Cellule(nombre = totalKm.toDouble()),
-            XlsxWriter.Cellule(),
-            XlsxWriter.Cellule(texte = "$nbJustificatifs justificatif(s) pour ${plan.size} dépense(s)"),
-        )
+        // Colonne par colonne plutôt qu'une liste à la main : ajouter une
+        // colonne au détail ne décale plus les totaux.
+        val total = MutableList(COLONNES_DETAIL) { XlsxWriter.Cellule() }
+        total[0] = entete("TOTAL")
+        total[15] = XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT)
+        total[18] = XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.GRAS_MONTANT)
+        total[19] = XlsxWriter.Cellule(nombre = totalKm.toDouble())
+        total[21] = XlsxWriter.Cellule(texte = "$nbJustificatifs justificatif(s) pour ${plan.size} dépense(s)")
+        detail.ligne(total)
 
         val synthese = XlsxWriter.Feuille("Synthèse")
         synthese.largeurs.addAll(listOf(24, 10, 14, 12))

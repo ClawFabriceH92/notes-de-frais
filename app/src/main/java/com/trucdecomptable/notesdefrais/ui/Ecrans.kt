@@ -420,7 +420,8 @@ fun EcranProjet(
                 d.societeParticipant.contains(recherche, ignoreCase = true) ||
                 Dates.affichage(d.date).contains(recherche) ||
                 d.date.contains(recherche) ||
-                d.trajet.contains(recherche, ignoreCase = true)
+                d.trajet.contains(recherche, ignoreCase = true) ||
+                d.gares.contains(recherche, ignoreCase = true)
         }
     }
     val parType = depenses.groupBy { it.typeDepense }
@@ -626,7 +627,8 @@ private fun LigneDepense(
                     buildString {
                         append(Dates.affichage(depense.date))
                         if (depense.libelle.isNotBlank()) append(" · ").append(depense.libelle)
-                        depense.sens?.let { append(" · ").append(it.label) }
+                        // Gares et sens du trajet : « Paris → Lyon · aller-retour ».
+                        if (depense.trajetLisible.isNotBlank()) append(" · ").append(depense.trajetLisible)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
@@ -797,6 +799,7 @@ private fun LigneCorbeille(
                         buildString {
                             append(Dates.affichage(depense.date))
                             if (depense.libelle.isNotBlank()) append(" · ").append(depense.libelle)
+                            if (depense.trajetLisible.isNotBlank()) append(" · ").append(depense.trajetLisible)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,

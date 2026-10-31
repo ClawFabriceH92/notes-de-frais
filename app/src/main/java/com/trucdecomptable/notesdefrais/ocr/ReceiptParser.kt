@@ -25,6 +25,9 @@ object ReceiptParser {
         /** VAT in basis points, 2000 = 20 %. */
         val tvaTauxBp: Int? = null,
         val libelle: String = "",
+        /** Gares lues sur un billet de train ou d'avion (vides sinon). */
+        val gareDepart: String = "",
+        val gareArrivee: String = "",
     ) {
         /** True when the app can save without asking anything. */
         val complet: Boolean get() = date != null && montantCentimes != null
@@ -67,6 +70,7 @@ object ReceiptParser {
 
         val heure = heure(haut)
         val type = type(haut, heure)
+        val (gareDepart, gareArrivee) = gares(brut, type)
         return Champs(
             date = date(brut)?.toString(),
             montantCentimes = montant(haut, brut),
@@ -75,6 +79,8 @@ object ReceiptParser {
             heure = heure,
             tvaTauxBp = tva(haut),
             libelle = libelle(brut, type),
+            gareDepart = gareDepart,
+            gareArrivee = gareArrivee,
         )
     }
 
@@ -213,6 +219,79 @@ object ReceiptParser {
             contient("AVION", "VOL ") -> TypeDepense.AVION
             else -> null
         }
+    }
+
+    // ------------------------------------------------------------------ gares
+
+    /** Ce qu'un billet imprime entre les deux villes d'un trajet. */
+    private val FLECHES = listOf("→", "⟶", "->", "=>", "»", "›", " > ")
+
+    /** Libellés qui introduisent une gare, du plus explicite au plus vague. */
+    private val MOTS_DEPART = listOf("GARE DE DEPART", "GARE DEPART", "DEPART", "ORIGINE")
+    private val MOTS_ARRIVEE = listOf("GARE D'ARRIVEE", "GARE ARRIVEE", "ARRIVEE", "DESTINATION")
+
+    /** Mots d'un billet qui ne sont jamais un nom de gare. */
+    private val BRUIT_GARE = Regex(
+        """(?i)\b(billet|sncf|tgv|inoui|ouigo|eurostar|thalys|itineris|ter|place|voiture|classe|prix|total|montant|eur|euros|date|heure|barcode|reference|commande|dossier|aller|retour|simple|aller-retour)\b""",
+    )
+
+    /**
+     * Gares d'un billet de train (aéroports d'un billet d'avion). Seuls deux
+     * cas sont reconnus, parce qu'ils sont sans ambiguïté : « A → B » sur une
+     * ligne, ou un libellé DÉPART/ARRIVÉE. Le reste est laissé vide : une gare
+     * inventée se retrouverait dans l'export comptable, une gare vide se saisit
+     * en trois secondes.
+     */
+    private fun gares(brut: String, type: TypeDepense?): Pair<String, String> {
+        if (type != TypeDepense.TRAIN && type != TypeDepense.AVION) return "" to ""
+        val lignes = brut.lines().map { it.trim() }.filter { it.isNotEmpty() }
+
+        for (ligne in lignes) {
+            for (fleche in FLECHES) {
+                val i = ligne.indexOf(fleche)
+                if (i <= 0) continue
+                val depart = garePropre(ligne.substring(0, i))
+                val arrivee = garePropre(ligne.substring(i + fleche.length))
+                if (depart.isNotBlank() && arrivee.isNotBlank()) return depart to arrivee
+            }
+        }
+
+        var depart = ""
+        var arrivee = ""
+        for (ligne in lignes) {
+            val haut = sansAccents(ligne).uppercase()
+            if (depart.isBlank()) {
+                depart = valeurApresLibelle(haut, MOTS_DEPART)
+            }
+            if (arrivee.isBlank()) {
+                arrivee = valeurApresLibelle(haut, MOTS_ARRIVEE)
+            }
+        }
+        // Une moitié de trajet ne sert à rien : on rend les deux ou rien.
+        return if (depart.isNotBlank() && arrivee.isNotBlank()) depart to arrivee else "" to ""
+    }
+
+    private fun valeurApresLibelle(haut: String, libelles: List<String>): String {
+        val libelle = libelles.firstOrNull { haut.contains(it) } ?: return ""
+        val apres = haut.substring(haut.indexOf(libelle) + libelle.length)
+        return garePropre(apres)
+    }
+
+    /**
+     * Nettoie un morceau de ligne : heures, numéros de voiture et de place,
+     * ponctuation. Rend une chaîne vide quand ce qui reste ne ressemble pas à un
+     * nom de lieu, ce qui écarte les lignes de montant ou de code-barres.
+     */
+    fun garePropre(brut: String): String {
+        var texte = brut.replace(Regex("""(?<!\d)[0-2]?\d\s*[:hH]\s*\d{2}(?!\d)"""), " ")
+        texte = texte.replace(Regex("""\b\d+\b"""), " ")
+        texte = texte.replace(Regex("""[^\p{L}'’\-. ]"""), " ")
+        texte = texte.replace(Regex("""\s+"""), " ").trim(' ', '.', '-', '\'')
+        if (texte.length < 4) return ""
+        val lettres = texte.count { it.isLetter() }
+        if (lettres < 4 || lettres * 10 < texte.length * 6) return ""
+        if (BRUIT_GARE.containsMatchIn(texte)) return ""
+        return texte.take(40).trim()
     }
 
     // ---------------------------------------------------------------- divers

@@ -687,6 +687,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 fichier = fichier.name,
                 texteOcr = texte,
                 moyenPaiement = moyenPaiementParDefaut(),
+                // Gares lues sur un billet de train : pré-remplies, corrigeables
+                // dans le formulaire. Vides quand le billet ne les imprime pas.
+                gareDepart = champs.gareDepart,
+                gareArrivee = champs.gareArrivee,
             )
 
             if (champs.complet) {
@@ -1069,6 +1073,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun messageLu() {
         _message.value = null
+    }
+
+    /**
+     * Un partage raté doit se voir : l'app ne peut pas ouvrir la messagerie,
+     * mais elle peut dire pourquoi au lieu d'échouer en silence.
+     */
+    fun signalerPartage(erreur: Throwable) {
+        _message.value = "Partage impossible : ${erreur.message ?: erreur.javaClass.simpleName}"
     }
 
     fun derniereOubliee() {

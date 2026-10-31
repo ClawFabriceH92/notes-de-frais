@@ -103,7 +103,10 @@ class DatesEtProfilsTest {
         val detail = xml["xl/worksheets/sheet1.xml"].orEmpty()
         val synthese = xml["xl/worksheets/sheet2.xml"].orEmpty()
 
-        assertTrue(detail.contains("Trajet"))
+        assertTrue(detail.contains("Sens"))
+        assertTrue(detail.contains("Gare départ"))
+        assertTrue(detail.contains("Gare arrivée"))
+        assertTrue(detail.contains("Date retour"))
         assertTrue(detail.contains("Invités"))
         assertTrue(detail.contains("Société invités"))
         assertTrue(detail.contains("Motif"))
