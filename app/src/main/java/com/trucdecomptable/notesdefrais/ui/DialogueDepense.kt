@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.trucdecomptable.notesdefrais.data.Depense
+import com.trucdecomptable.notesdefrais.data.Justificatifs
 import com.trucdecomptable.notesdefrais.data.SensTrajet
 import com.trucdecomptable.notesdefrais.data.TauxBdf
 import com.trucdecomptable.notesdefrais.data.TypeDepense
@@ -97,6 +98,7 @@ fun DialogueDepense(
     var apercu by remember { mutableStateOf<String?>(null) }
     var choixProjet by remember { mutableStateOf(false) }
     var confirmationCorbeille by remember { mutableStateOf(false) }
+    var confirmationFacture by remember { mutableStateOf(false) }
 
     val launcherPiece = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
@@ -124,6 +126,31 @@ fun DialogueDepense(
     val dateRetourDemandee = typeCourant.trajetDemande && sens == SensTrajet.ALLER_RETOUR.name
     val dateRetourValide = !dateRetourDemandee || dateRetour.isBlank() || Dates.estValide(dateRetour)
     val valide = Dates.estValide(date) && montantCentimes != null && montantCentimes > 0L && dateRetourValide
+
+    // La dépense telle qu'elle partirait à l'enregistrement : elle sert au
+    // contrôle de la facture obligatoire, puis à l'enregistrement lui-même.
+    val candidate = initiale.copy(
+        date = Dates.frVersIso(date) ?: initiale.date,
+        montantCentimes = montantCentimes ?: 0L,
+        devise = devise,
+        tauxChange = if (devise == "EUR") null else taux.replace(',', '.').toDoubleOrNull(),
+        type = type.name,
+        libelle = libelle.trim(),
+        tvaTauxBp = if (ventiler) tauxTva else null,
+        refacturable = refacturable,
+        moyenPaiement = paiement.trim(),
+        organisme = organisme.trim(),
+        sensTrajet = if (typeCourant.trajetDemande) sens else "",
+        gareDepart = if (typeCourant.trajetDemande) gareDepart.trim() else "",
+        gareArrivee = if (typeCourant.trajetDemande) gareArrivee.trim() else "",
+        dateRetour = if (dateRetourDemandee) Dates.frVersIso(dateRetour).orEmpty() else "",
+        participants = if (typeCourant.repasDemande) participants.trim() else "",
+        societeParticipant = if (typeCourant.repasDemande) societeParticipant.trim() else "",
+        motifRepas = if (typeCourant.repasDemande) motifRepas.trim() else "",
+    )
+    // Repas au restaurant au-delà de 150 € HT : la facture nominative devient
+    // le seul justificatif valable. On le dit avant d'enregistrer, pas après.
+    val alerteFacture = Justificatifs.alerte(candidate)
 
     AlertDialog(
         onDismissRequest = onAnnuler,
@@ -382,6 +409,16 @@ fun DialogueDepense(
                     }
                 }
 
+                // Seuil de la facture obligatoire : visible pendant la saisie,
+                // pour ne pas découvrir la contrainte au moment d'enregistrer.
+                if (alerteFacture != null) {
+                    Text(
+                        alerteFacture,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
                 OutlinedTextField(
                     value = libelle,
                     onValueChange = { libelle = it },
@@ -426,27 +463,9 @@ fun DialogueDepense(
             TextButton(
                 enabled = valide,
                 onClick = {
-                    onValider(
-                        initiale.copy(
-                            date = Dates.frVersIso(date) ?: initiale.date,
-                            montantCentimes = montantCentimes ?: 0L,
-                            devise = devise,
-                            tauxChange = if (devise == "EUR") null else taux.replace(',', '.').toDoubleOrNull(),
-                            type = type.name,
-                            libelle = libelle.trim(),
-                            tvaTauxBp = if (ventiler) tauxTva else null,
-                            refacturable = refacturable,
-                            moyenPaiement = paiement.trim(),
-                            organisme = organisme.trim(),
-                            sensTrajet = if (typeCourant.trajetDemande) sens else "",
-                            gareDepart = if (typeCourant.trajetDemande) gareDepart.trim() else "",
-                            gareArrivee = if (typeCourant.trajetDemande) gareArrivee.trim() else "",
-                            dateRetour = if (dateRetourDemandee) Dates.frVersIso(dateRetour).orEmpty() else "",
-                            participants = if (typeCourant.repasDemande) participants.trim() else "",
-                            societeParticipant = if (typeCourant.repasDemande) societeParticipant.trim() else "",
-                            motifRepas = if (typeCourant.repasDemande) motifRepas.trim() else "",
-                        ),
-                    )
+                    // Le repas au-delà du seuil demande une facture : on le
+                    // signale dans une fenêtre dédiée avant d'enregistrer.
+                    if (alerteFacture != null) confirmationFacture = true else onValider(candidate)
                 },
             ) { Text("Enregistrer") }
         },
@@ -480,6 +499,37 @@ fun DialogueDepense(
             },
             dismissButton = {
                 TextButton(onClick = { confirmationCorbeille = false }) { Text("Annuler") }
+            },
+        )
+    }
+
+    if (confirmationFacture) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmationFacture = false },
+            title = { Text("Facture obligatoire") },
+            text = { Text(Justificatifs.explication(candidate)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmationFacture = false
+                        onValider(candidate)
+                    },
+                ) { Text("Enregistrer quand même") }
+            },
+            dismissButton = {
+                Row {
+                    // Joindre la facture suppose une dépense déjà enregistrée :
+                    // sur une nouvelle dépense, la pièce s'ajoute après coup.
+                    if (onAjouterPiece != null && initiale.id != 0L) {
+                        TextButton(
+                            onClick = {
+                                confirmationFacture = false
+                                launcherPiece.launch(arrayOf("image/*", "application/pdf"))
+                            },
+                        ) { Text("Joindre la facture") }
+                    }
+                    TextButton(onClick = { confirmationFacture = false }) { Text("Annuler") }
+                }
             },
         )
     }

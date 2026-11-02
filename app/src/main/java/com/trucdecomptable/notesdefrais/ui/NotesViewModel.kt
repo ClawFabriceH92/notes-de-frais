@@ -9,6 +9,7 @@ import com.trucdecomptable.notesdefrais.data.AnnuaireEntreprises
 import com.trucdecomptable.notesdefrais.data.BaremeKm
 import com.trucdecomptable.notesdefrais.data.Depense
 import com.trucdecomptable.notesdefrais.data.Doublons
+import com.trucdecomptable.notesdefrais.data.Justificatifs
 import com.trucdecomptable.notesdefrais.data.NotesDb
 import com.trucdecomptable.notesdefrais.data.Parametres
 import com.trucdecomptable.notesdefrais.data.ParametresStore
@@ -776,6 +777,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         return listOfNotNull(
             Doublons.alerte(depense, existantes.filter { it.id != depense.id }),
             Plafonds.alerte(depense, _parametres.value.zoneParis),
+            // Les dépenses issues de l'OCR ou d'un import ne passent pas par le
+            // formulaire : le seuil de la facture obligatoire doit être dit ici.
+            Justificatifs.alerte(depense),
         ).joinToString(" · ").ifBlank { null }
     }
 
