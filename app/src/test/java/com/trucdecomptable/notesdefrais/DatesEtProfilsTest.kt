@@ -156,6 +156,18 @@ class DatesEtProfilsTest {
         assertNull(com.trucdecomptable.notesdefrais.data.Plafonds.plafondCentimes(TypeDepense.LOCATION_VOITURE, false))
     }
 
+    @Test
+    fun `le petit dejeuner est plafonne comme un repas mais ne demande pas d invites`() {
+        assertEquals(TypeDepense.PETIT_DEJEUNER, TypeDepense.fromSlug("petit-dejeuner"))
+        val petitDejeuner = Depense(projetId = 1, date = "2026-10-12", montantCentimes = 1250, type = TypeDepense.PETIT_DEJEUNER.name)
+        assertEquals("Petit déjeuner", petitDejeuner.typeDepense.label)
+        // Un petit-déjeuner se prend seul : ni invités ni motif à saisir.
+        assertFalse(petitDejeuner.repasDemande)
+        assertEquals(2140L, com.trucdecomptable.notesdefrais.data.Plafonds.plafondCentimes(TypeDepense.PETIT_DEJEUNER, false))
+        // Sous le plafond, aucune alerte.
+        assertNull(com.trucdecomptable.notesdefrais.data.Plafonds.alerte(petitDejeuner, zoneParis = false))
+    }
+
     private fun unzip(octets: ByteArray): Map<String, String> {
         val entrees = mutableMapOf<String, String>()
         ZipInputStream(octets.inputStream()).use { zip ->

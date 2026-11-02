@@ -21,6 +21,7 @@ enum class TypeDepense(val label: String, val slug: String) {
     ESSENCE("Essence", "essence"),
     PEAGE("Péage", "peage"),
     HOTEL("Hôtel", "hotel"),
+    PETIT_DEJEUNER("Petit déjeuner", "petit-dejeuner"),
     RESTAURANT_MIDI_SEUL("Repas midi seul", "repas-midi-seul"),
     RESTAURANT_MIDI_INVITE("Repas midi avec invité", "repas-midi-invite"),
     RESTAURANT_SOIR("Restaurant soir", "restaurant-soir"),

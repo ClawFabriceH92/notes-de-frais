@@ -59,6 +59,34 @@ class ReceiptParserTest {
     }
 
     @Test
+    fun `petit dejeuner - un ticket de cafe le matin n est pas un dejeuner`() {
+        val texte = """
+            CAFE DES ARTS
+            $jour/$mois/$annee 08:12
+            Formule matin (croissant + cafe)   7,90
+            TOTAL                               7,90
+            TVA 10%                             0,72
+        """.trimIndent()
+
+        val champs = ReceiptParser.parse(texte)
+
+        assertEquals(TypeDepense.PETIT_DEJEUNER, champs.type)
+        assertEquals(790L, champs.montantCentimes)
+    }
+
+    @Test
+    fun `petit dejeuner - l hotel avec son petit dejeuner reste une nuitée`() {
+        val texte = """
+            HOTEL DU LAC
+            Chambre 12 - 2 nuits
+            Petit dejeuner inclus  18,00
+            TOTAL A PAYER        196,00
+        """.trimIndent()
+
+        assertEquals(TypeDepense.HOTEL, ReceiptParser.parse(texte).type)
+    }
+
+    @Test
     fun `hotel - montant avec separateur de milliers`() {
         val texte = """
             IBIS PARIS BERCY

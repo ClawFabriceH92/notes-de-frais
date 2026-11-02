@@ -47,8 +47,18 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
 - **Enregistrement direct** quand la date et le montant sont trouvés ; sinon le
   formulaire s'ouvre avec ce qui a été lu, et les champs manquants en clair.
 - **Types** : avion, train, taxi, location de voiture, essence, péage, hôtel,
-  repas midi seul, repas midi avec invité, restaurant soir, indemnité km, autres.
+  petit déjeuner, repas midi seul, repas midi avec invité, restaurant soir,
+  indemnité km, autres.
   Les dépenses « restaurant midi » d'avant la séparation deviennent « midi seul ».
+- **Petit déjeuner** (v1.15.0) : un type à part, pour le petit-déjeuner facturé
+  séparément de la chambre. Pas d'invités à saisir. Côté plafond, l'URSSAF n'en
+  publie pas de propre : le petit-déjeuner n'existe que dans la ligne « logement
+  et petit déjeuner » du grand déplacement (76,60 € Paris et 92/93/94, 56,80 €
+  ailleurs, pour la nuitée entière). Facturé seul, il est donc comparé au
+  plafond repas au restaurant (21,40 €) et l'alerte de dépassement le signale
+  comme les autres repas. Sur un ticket, « petit déjeuner », « petit-déjeuner »,
+  « breakfast » ou « formule matin » le reconnaissent ; une note d'hôtel qui
+  mentionne le petit-déjeuner entre ses lignes reste une nuitée.
 - **Train et avion** : un aller simple ou un aller-retour, à cocher sur la dépense.
 - **Repas** : nom et prénom des invités, leur société, motif du repas, pour que la
   dépense reste justifiée sur le plan fiscal.
@@ -173,7 +183,8 @@ Secrets CI : `NOTESDEFRAIS_KEYSTORE_B64`, `NOTESDEFRAIS_KEYSTORE_PASSWORD`,
 
 ## Tests
 
-113 tests unitaires JVM : lecture des tickets (12 formats), générateur xlsx
+116 tests unitaires JVM : lecture des tickets (15 cas, dont le petit déjeuner
+et la note d'hôtel qui le mentionne), générateur xlsx
 (vérifié en dézippant le classeur), nommage et numérotation des justificatifs,
 dates françaises (saisie et affichage), aller-retour et invités d'un repas,
 profils de société dans l'export, validation du SIRET, conversion de devises,

@@ -16,6 +16,15 @@ object Plafonds {
     /** Repas pris au restaurant lors d'un déplacement professionnel. */
     const val REPAS_RESTAURANT = 2140L
 
+    /**
+     * Petit déjeuner. L'URSSAF ne publie pas de plafond propre : le
+     * petit-déjeuner n'apparaît que dans la ligne « logement et petit
+     * déjeuner » du grand déplacement. Facturé à part (hôtel sans formule ou
+     * café le matin), il relève des frais de repas : c'est donc le plafond
+     * repas au restaurant qui sert de repère.
+     */
+    const val PETIT_DEJEUNER = REPAS_RESTAURANT
+
     /** Repas sur le lieu de travail. */
     const val REPAS_LIEU_TRAVAIL = 750L
 
@@ -34,6 +43,8 @@ object Plafonds {
         TypeDepense.RESTAURANT_MIDI_INVITE,
         TypeDepense.RESTAURANT_SOIR,
         -> REPAS_RESTAURANT
+
+        TypeDepense.PETIT_DEJEUNER -> PETIT_DEJEUNER
 
         TypeDepense.HOTEL -> if (zoneParis) NUITEE_PARIS else NUITEE_PROVINCE
         // Transport, taxi, train, avion, essence, péage, location, indemnités :

@@ -209,6 +209,13 @@ object ReceiptParser {
             contient("TAXI", "UBER", "BOLT", "VTC", "G7 ", "CHAUFFEUR", "COURSE ", "MARCEL ")
                 -> TypeDepense.TAXI
 
+            // Facturé à part, donc lu avant le repas : « petit déjeuner » sur un
+            // ticket de café ou de boulangerie n'est pas un déjeuner. L'hôtel est
+            // testé plus haut, une note de chambre avec son petit-déjeuner reste
+            // une nuitée.
+            contient("PETIT DEJEUNER", "PETIT-DEJEUNER", "BREAKFAST", "FORMULE MATIN")
+                -> TypeDepense.PETIT_DEJEUNER
+
             contient("RESTAURANT", "BRASSERIE", "BISTROT", "RESTO", "PIZZERIA", "SUSHI", "MENU",
                 "REPAS", "RÉPAS", "COUVERT", "SERVEUR", "TABLE ", "ENTRECOTE", "ENTRECÔTE", "PLAT ",
                 "DESSERT", "CAFE ", "CAFÉ ")
