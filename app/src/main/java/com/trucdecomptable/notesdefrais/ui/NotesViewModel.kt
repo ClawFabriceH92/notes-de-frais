@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.trucdecomptable.notesdefrais.backup.Sauvegarde
 import com.trucdecomptable.notesdefrais.data.AnnuaireEntreprises
 import com.trucdecomptable.notesdefrais.data.BaremeKm
+import com.trucdecomptable.notesdefrais.data.Controles
 import com.trucdecomptable.notesdefrais.data.Depense
 import com.trucdecomptable.notesdefrais.data.Doublons
 import com.trucdecomptable.notesdefrais.data.Justificatifs
@@ -336,6 +337,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     /** Export trop lourd : il attend la décision (découper en deux ou envoyer tel quel). */
     private val _exportTrop = MutableStateFlow<File?>(null)
     val exportTrop: StateFlow<File?> = _exportTrop.asStateFlow()
+
+    /**
+     * Justificatifs manquants relevés avant l'export : l'utilisateur décide
+     * « Exporter quand même » ou « Annuler ». Null quand rien ne manque ou
+     * une fois la décision prise. Rien n'est bloqué : c'est l'UI qui affiche.
+     */
+    private val _controlesExport = MutableStateFlow<List<String>?>(null)
+    val controlesExport: StateFlow<List<String>?> = _controlesExport.asStateFlow()
 
     /** Un mail prêt à partir, avec son rang quand l'envoi est découpé. */
     private val _envoi = MutableStateFlow<Envoi?>(null)
@@ -693,6 +702,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 // dans le formulaire. Vides quand le billet ne les imprime pas.
                 gareDepart = champs.gareDepart,
                 gareArrivee = champs.gareArrivee,
+                // Numéro de facture lu sur le justificatif : repère fiable
+                // contre les doublons. Vide quand le ticket n'en imprime pas.
+                numFacture = champs.numFacture,
             )
 
             if (champs.complet) {
@@ -774,13 +786,19 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun avertissements(depense: Depense): String? {
         val existantes = dao.depensesSync(depense.projetId)
-        return listOfNotNull(
-            Doublons.alerte(depense, existantes.filter { it.id != depense.id }),
-            Plafonds.alerte(depense, _parametres.value.zoneParis),
-            // Les dépenses issues de l'OCR ou d'un import ne passent pas par le
-            // formulaire : le seuil de la facture obligatoire doit être dit ici.
-            Justificatifs.alerte(depense),
-        ).joinToString(" · ").ifBlank { null }
+        val autres = existantes.filter { it.id != depense.id }
+        val alertes = mutableListOf<String>()
+        Doublons.alerte(depense, autres)?.let(alertes::add)
+        // Deux dépenses d'un même projet avec le même numéro de facture sont
+        // presque sûrement la même facture : un repère plus fiable que la date.
+        Doublons.alerteNumero(depense, autres)?.let(alertes::add)
+        // Les dépenses issues de l'OCR ou d'un import ne passent pas par le
+        // formulaire : les contrôles de saisie (date future, TVA, repas
+        // incomplet) et le seuil de la facture obligatoire doivent être dits ici.
+        alertes += Controles.alertesSaisie(depense)
+        Plafonds.alerte(depense, _parametres.value.zoneParis)?.let(alertes::add)
+        Justificatifs.alerte(depense)?.let(alertes::add)
+        return alertes.joinToString(" · ").ifBlank { null }
     }
 
     fun editer(depense: Depense) {
@@ -874,40 +892,73 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     // ------------------------------------------------------------------- export
 
+    /**
+     * Avant de construire le ZIP, on relève ce qui manquerait à l'export
+     * (pièces jointes, facture au-delà du seuil). Si la liste est vide, on
+     * exporte directement ; sinon on la soumet à l'utilisateur, qui choisit
+     * « Exporter quand même » ou « Annuler ». Rien n'est bloqué.
+     */
     fun exporter() {
         val projet = _projet.value ?: return
         viewModelScope.launch {
-            try {
-                _traitement.value = true
-                val liste = withContext(Dispatchers.IO) { dao.depensesSync(projet.id) }
-                if (liste.isEmpty()) {
-                    _message.value = "Aucune dépense à exporter"
-                    return@launch
-                }
-                // Le profil du projet porte la société, le SIRET et le destinataire.
-                val profil = projet.profilId.takeIf { it > 0L }?.let { profilsDao.profil(it) }
-                val fichier = ExportManager.exporter(
-                    getApplication(), projet, liste, _parametres.value, profil,
-                )
-                _emailExport.value = profil?.emailDestinataire?.takeIf { it.isNotBlank() }
-                    ?: _parametres.value.emailDestinataire
-                _projetExporte.value = projet
-                _listeExportee.value = liste
-                _profilExporte.value = profil
-                if (fichier.length() > ExportManager.SEUIL_DECOUPAGE) {
-                    // Trop lourd pour un mail : on demande avant de partager.
-                    _exportTrop.value = fichier
-                    _message.value = "ZIP de ${tailleLisible(fichier.length())} : le découper en 2 ?"
-                } else {
-                    _export.value = fichier
-                    _message.value = "ZIP prêt : ${liste.size} justificatif(s)"
-                }
-            } catch (e: Exception) {
-                Diag.record("export", e)
-                _message.value = "Export impossible : ${e.message ?: "erreur"}"
-            } finally {
-                _traitement.value = false
+            val liste = withContext(Dispatchers.IO) { dao.depensesSync(projet.id) }
+            val controles = Controles.controleAvantExport(liste)
+            if (controles.isEmpty()) {
+                lancerExport()
+            } else {
+                _controlesExport.value = controles
             }
+        }
+    }
+
+    /** L'utilisateur accepte l'export malgré les justificatifs manquants. */
+    fun confirmerExport() {
+        _controlesExport.value = null
+        viewModelScope.launch { lancerExport() }
+    }
+
+    /** L'utilisateur renonce : on ferme la fenêtre, rien n'est exporté. */
+    fun annulerExport() {
+        _controlesExport.value = null
+    }
+
+    /**
+     * Construit le ZIP du projet ouvert et le propose au partage. Appelé soit
+     * directement quand tout est en règle, soit après la confirmation de
+     * l'utilisateur quand des justificatifs manquent.
+     */
+    private suspend fun lancerExport() {
+        val projet = _projet.value ?: return
+        try {
+            _traitement.value = true
+            val liste = withContext(Dispatchers.IO) { dao.depensesSync(projet.id) }
+            if (liste.isEmpty()) {
+                _message.value = "Aucune dépense à exporter"
+                return
+            }
+            // Le profil du projet porte la société, le SIRET et le destinataire.
+            val profil = projet.profilId.takeIf { it > 0L }?.let { profilsDao.profil(it) }
+            val fichier = ExportManager.exporter(
+                getApplication(), projet, liste, _parametres.value, profil,
+            )
+            _emailExport.value = profil?.emailDestinataire?.takeIf { it.isNotBlank() }
+                ?: _parametres.value.emailDestinataire
+            _projetExporte.value = projet
+            _listeExportee.value = liste
+            _profilExporte.value = profil
+            if (fichier.length() > ExportManager.SEUIL_DECOUPAGE) {
+                // Trop lourd pour un mail : on demande avant de partager.
+                _exportTrop.value = fichier
+                _message.value = "ZIP de ${tailleLisible(fichier.length())} : le découper en 2 ?"
+            } else {
+                _export.value = fichier
+                _message.value = "ZIP prêt : ${liste.size} justificatif(s)"
+            }
+        } catch (e: Exception) {
+            Diag.record("export", e)
+            _message.value = "Export impossible : ${e.message ?: "erreur"}"
+        } finally {
+            _traitement.value = false
         }
     }
 

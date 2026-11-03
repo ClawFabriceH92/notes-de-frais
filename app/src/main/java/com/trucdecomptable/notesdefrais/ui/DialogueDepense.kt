@@ -38,9 +38,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.trucdecomptable.notesdefrais.data.Controles
 import com.trucdecomptable.notesdefrais.data.Depense
 import com.trucdecomptable.notesdefrais.data.Justificatifs
+import com.trucdecomptable.notesdefrais.data.Plafonds
 import com.trucdecomptable.notesdefrais.data.SensTrajet
+import com.trucdecomptable.notesdefrais.data.SituationRepas
 import com.trucdecomptable.notesdefrais.data.TauxBdf
 import com.trucdecomptable.notesdefrais.data.TypeDepense
 import com.trucdecomptable.notesdefrais.util.Dates
@@ -74,6 +77,9 @@ fun DialogueDepense(
     onRecadrerPiece: ((String, android.graphics.Bitmap) -> Unit)? = null,
     projetsCibles: List<com.trucdecomptable.notesdefrais.data.Projet> = emptyList(),
     onDeplacer: ((com.trucdecomptable.notesdefrais.data.Projet) -> Unit)? = null,
+    // Paris (92, 93, 94) change le plafond de la nuitée ; il est transmis par
+    // l'appelant, comme la situation du repas change le plafond repas.
+    zoneParis: Boolean = false,
 ) {
     var date by remember { mutableStateOf(Dates.isoVersFr(initiale.date)) }
     var montant by remember { mutableStateOf(if (initiale.montantCentimes > 0) centimesVersTexte(initiale.montantCentimes) else "") }
@@ -94,6 +100,10 @@ fun DialogueDepense(
     var participants by remember { mutableStateOf(initiale.participants) }
     var societeParticipant by remember { mutableStateOf(initiale.societeParticipant) }
     var motifRepas by remember { mutableStateOf(initiale.motifRepas) }
+    // La situation du repas change son plafond d'exonération : on la garde en
+    // état, lue depuis la dépense, puis reportée dans `candidate`.
+    var situation by remember { mutableStateOf(initiale.situation) }
+    var numFacture by remember { mutableStateOf(initiale.numFacture) }
     var tauxBdf by remember { mutableStateOf<TauxBdf.Taux?>(null) }
     var apercu by remember { mutableStateOf<String?>(null) }
     var choixProjet by remember { mutableStateOf(false) }
@@ -147,6 +157,12 @@ fun DialogueDepense(
         participants = if (typeCourant.repasDemande) participants.trim() else "",
         societeParticipant = if (typeCourant.repasDemande) societeParticipant.trim() else "",
         motifRepas = if (typeCourant.repasDemande) motifRepas.trim() else "",
+        // Numéro de facture : repère fiable contre les doublons. Facultatif,
+        // toutes dépenses : beaucoup de tickets n'en portent pas.
+        numFacture = numFacture.trim(),
+        // La situation du repas, choisie plus bas, change le plafond appliqué
+        // par Plafonds.alerte : c'est elle qui est enregistrée, pas le plafond.
+        situationRepas = situation.name,
     )
     // Repas au restaurant au-delà de 150 € HT : la facture nominative devient
     // le seul justificatif valable. On le dit avant d'enregistrer, pas après.
@@ -237,6 +253,18 @@ fun DialogueDepense(
                     }
                 }
 
+                // Numéro de facture tel qu'imprimé sur le justificatif. Il sert
+                // de repère fiable contre les doublons ; facultatif, toutes
+                // dépenses : beaucoup de tickets n'en portent pas.
+                OutlinedTextField(
+                    value = numFacture,
+                    onValueChange = { numFacture = it },
+                    label = { Text("N° de facture") },
+                    placeholder = { Text("facultatif") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
                 // Train et avion : un aller ou un aller-retour ? La question
                 // n'apparaît que pour ces deux types.
                 if (typeCourant.trajetDemande) {
@@ -293,8 +321,28 @@ fun DialogueDepense(
                     }
                 }
 
-                // Repas : la déductibilité tient à ces trois informations.
+                // Repas : la déductibilité tient à la situation (qui change le
+                // plafond), aux invités et au motif. Trois informations que la
+                // comptabilité voudrait voir sur la ligne.
                 if (typeCourant.repasDemande) {
+                    // La situation du repas change le plafond d'exonération : le
+                    // même repas au restaurant ne vaut pas le même plafond en
+                    // grand déplacement qu'au lieu de travail. On le demande, et
+                    // on rappelle le plafond qui s'applique.
+                    Text("Situation du repas", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SituationRepas.entries.forEach { option ->
+                            PuceChoix(
+                                selected = situation == option,
+                                onClick = { situation = option },
+                                label = { Text(option.label) },
+                            )
+                        }
+                    }
+                    Plafonds.libellePlafond(typeCourant.typeDepense, zoneParis, situation)?.let { libelle ->
+                        Text(libelle, style = MaterialTheme.typography.bodySmall)
+                    }
+
                     Text("Invités et motif", style = MaterialTheme.typography.labelLarge)
                     OutlinedTextField(
                         value = participants,
@@ -316,6 +364,18 @@ fun DialogueDepense(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+
+                // Les contrôles de saisie (date à venir, TVA improbable, repas
+                // incomplet) et le dépassement de plafond : ils avertissent sans
+                // bloquer l'enregistrement, affichés en rouge sous les champs.
+                (Controles.alertesSaisie(candidate) + listOfNotNull(Plafonds.alerte(candidate, zoneParis)))
+                    .forEach { alerte ->
+                        Text(
+                            alerte,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
 
                 // Which card paid: several CBs, cash, a transfer. The labels come
                 // from the settings, and an older value keeps its own chip so a

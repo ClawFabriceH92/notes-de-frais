@@ -28,6 +28,8 @@ object ReceiptParser {
         /** Gares lues sur un billet de train ou d'avion (vides sinon). */
         val gareDepart: String = "",
         val gareArrivee: String = "",
+        /** Numéro de facture lu sur le justificatif, vide quand il n'y en a pas. */
+        val numFacture: String = "",
     ) {
         /** True when the app can save without asking anything. */
         val complet: Boolean get() = date != null && montantCentimes != null
@@ -47,6 +49,15 @@ object ReceiptParser {
 
     private val HEURE = Regex("""(?<!\d)([01]?\d|2[0-3])\s*[:hH]\s*(\d{2})(?!\d)""")
     private val TVA = Regex("""T\.?V\.?A[^0-9%]{0,12}(\d{1,2}(?:[.,]\d{1,2})?)\s*%""", RegexOption.IGNORE_CASE)
+
+    /**
+     * Libellés qui introduisent un numéro de facture sur un justificatif. Le
+     * « ° » est exigé après « N » : sans lui « FACTURE N » accrocherait
+     * « FACTURE NET À PAYER » et lirait « ET » comme numéro.
+     */
+    private val NUM_FACTURE = Regex(
+        """(?:FACTURE\s*N\s*[°º]|N\s*[°º]\s*DE\s*FACTURE|NUMERO\s*DE\s*FACTURE|FACT\.)""",
+    )
 
     /** Lines carrying the amount actually paid, most trustworthy first. */
     private val TOTAUX = listOf(
@@ -81,6 +92,7 @@ object ReceiptParser {
             libelle = libelle(brut, type),
             gareDepart = gareDepart,
             gareArrivee = gareArrivee,
+            numFacture = numeroFacture(haut),
         )
     }
 
@@ -302,6 +314,21 @@ object ReceiptParser {
     }
 
     // ---------------------------------------------------------------- divers
+
+    /**
+     * Numéro de facture imprimé sur le justificatif, lu juste après l'un des
+     * libellés connus (« FACTURE N° », « N° DE FACTURE », « FACT. »,
+     * « NUMERO DE FACTURE »). On prend le premier mot qui suit, borné aux
+     * lettres, chiffres et tirets : un numéro se lit d'un bloc, le reste de la
+     * ligne (date, montant) n'en fait pas partie. Vide quand rien ne ressemble
+     * à un numéro.
+     */
+    private fun numeroFacture(haut: String): String {
+        val m = NUM_FACTURE.find(haut) ?: return ""
+        val apres = haut.substring(m.range.last + 1).trim().trimStart(':', '-', '.', ' ')
+        val numero = apres.takeWhile { it.isLetterOrDigit() || it == '/' || it == '-' || it == '.' }
+        return numero.trim('-', '.', '/').takeIf { it.isNotBlank() } ?: ""
+    }
 
     private fun devise(haut: String): String = when {
         haut.contains("CHF") -> "CHF"

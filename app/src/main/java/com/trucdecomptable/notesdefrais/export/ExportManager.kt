@@ -39,7 +39,7 @@ object ExportManager {
      * Nombre de colonnes de la feuille « Dépenses ». La ligne de totaux se cale
      * par index dessus : ajouter une colonne ne décale plus les montants.
      */
-    private const val COLONNES_DETAIL = 23
+    private const val COLONNES_DETAIL = 24
 
     /**
      * One line of the export: the expense, its running number in the archive
@@ -417,10 +417,11 @@ object ExportManager {
     ): List<XlsxWriter.Feuille> {
         val detail = XlsxWriter.Feuille("Dépenses")
         detail.largeurs.addAll(
-            listOf(6, 12, 18, 26, 18, 24, 16, 24, 24, 12, 18, 20, 22, 12, 8, 10, 12, 8, 12, 12, 10, 12, 46),
+            listOf(6, 12, 18, 26, 16, 18, 24, 16, 24, 24, 12, 18, 20, 22, 12, 8, 10, 12, 8, 12, 12, 10, 12, 46),
         )
         detail.ligne(
-            entete("N°"), entete("Date"), entete("Type"), entete("Libellé"), entete("Paiement"),
+            entete("N°"), entete("Date"), entete("Type"), entete("Libellé"), entete("N° facture"),
+            entete("Paiement"),
             entete("Organisme"),
             entete("Sens"), entete("Gare départ"), entete("Gare arrivée"), entete("Date retour"),
             entete("Invités"), entete("Société invités"), entete("Motif"),
@@ -463,6 +464,9 @@ object ExportManager {
                 XlsxWriter.Cellule(texte = Dates.affichage(d.date)),
                 XlsxWriter.Cellule(texte = d.typeDepense.label),
                 XlsxWriter.Cellule(texte = d.libelle),
+                // Le numéro de facture, à côté du libellé : c'est ce que la
+                // comptabilité rapproche du justificatif, et le repère doublon.
+                XlsxWriter.Cellule(texte = d.numFacture),
                 XlsxWriter.Cellule(texte = d.moyenPaiement),
                 XlsxWriter.Cellule(texte = d.organisme),
                 XlsxWriter.Cellule(texte = d.sens?.label.orEmpty()),
@@ -493,10 +497,10 @@ object ExportManager {
         // colonne au détail ne décale plus les totaux.
         val total = MutableList(COLONNES_DETAIL) { XlsxWriter.Cellule() }
         total[0] = entete("TOTAL")
-        total[16] = XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT)
-        total[19] = XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.GRAS_MONTANT)
-        total[20] = XlsxWriter.Cellule(nombre = totalKm.toDouble())
-        total[22] = XlsxWriter.Cellule(texte = "$nbJustificatifs justificatif(s) pour ${plan.size} dépense(s)")
+        total[17] = XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT)
+        total[20] = XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.GRAS_MONTANT)
+        total[21] = XlsxWriter.Cellule(nombre = totalKm.toDouble())
+        total[23] = XlsxWriter.Cellule(texte = "$nbJustificatifs justificatif(s) pour ${plan.size} dépense(s)")
         detail.ligne(total)
 
         val synthese = XlsxWriter.Feuille("Synthèse")
@@ -519,6 +523,9 @@ object ExportManager {
         }
         synthese.ligne(entete("Dépenses"), XlsxWriter.Cellule(nombre = plan.size.toDouble()))
         synthese.ligne(entete("Justificatifs"), XlsxWriter.Cellule(nombre = nbJustificatifs.toDouble()))
+        // Combien de dépenses partent sans aucune pièce jointe : c'est ce que
+        // la comptabilité va réclamer, autant le voir écrit noir sur blanc.
+        synthese.ligne(entete("Dont sans justificatif"), XlsxWriter.Cellule(nombre = (plan.size - nbJustificatifs).toDouble()))
         synthese.ligne(entete("Total EUR"), XlsxWriter.Cellule(nombre = totalEur, style = XlsxWriter.GRAS_MONTANT))
         synthese.ligne(entete("Dont TVA"), XlsxWriter.Cellule(nombre = totalTva, style = XlsxWriter.MONTANT))
         synthese.ligne(entete("Édité le"), XlsxWriter.Cellule(texte = LocalDate.now().toString()))

@@ -45,6 +45,26 @@ enum class SensTrajet(val label: String, val slug: String) {
 }
 
 /**
+ * Où le repas a été pris, au sens des frais professionnels URSSAF. La situation
+ * change le plafond d'exonération : le même repas au restaurant ne vaut pas le
+ * même plafond en grand déplacement (déplacement réel) qu'à proximité du
+ * bureau ou hors déplacement contraint.
+ */
+enum class SituationRepas(val label: String, val slug: String) {
+    /** Déplacement professionnel réel : repas au restaurant, plafond 21,40 €. */
+    GRAND_DEPLACEMENT("Grand déplacement", "grand-deplacement"),
+    /** Repas sur le lieu de travail, plafond 7,50 €. */
+    LIEU_TRAVAIL("Lieu de travail", "lieu-travail"),
+    /** Repas au restaurant sans déplacement contraint, plafond 10,40 €. */
+    HORS_DEPLACEMENT("Hors déplacement", "hors-deplacement");
+
+    companion object {
+        fun fromName(name: String): SituationRepas = entries.firstOrNull { it.name == name } ?: GRAND_DEPLACEMENT
+        fun fromSlug(slug: String): SituationRepas = entries.firstOrNull { it.slug == slug } ?: GRAND_DEPLACEMENT
+    }
+}
+
+/**
  * Une société du cabinet (deux sociétés = deux jeux de projets). Le titulaire,
  * lui, reste dans le paramétrage : c'est la même personne qui engage les frais.
  */
@@ -206,6 +226,19 @@ data class Depense(
     val societeParticipant: String = "",
     val motifRepas: String = "",
     /**
+     * Numéro de facture tel qu'imprimé sur le justificatif. Il sert de repère
+     * fiable contre les doublons (deux dépenses d'un même projet portant le
+     * même numéro sont presque sûrement la même facture), là où le montant et
+     * la date peuvent coïncider par hasard. Vide quand il n'y en a pas.
+     */
+    val numFacture: String = "",
+    /**
+     * Situation du repas, stockée en texte (comme [type]) pour rester lisible
+     * en base et survivre à un renommage de l'enum. Défaut = grand déplacement,
+     * le cas le plus fréquent et celui qui ne change pas le plafond historique.
+     */
+    val situationRepas: String = SituationRepas.GRAND_DEPLACEMENT.name,
+    /**
      * Quand la dépense a été mise à la corbeille (null = dépense active). Une
      * dépense à la corbeille n'est ni listée, ni totalisée, ni exportée, mais
      * sa pièce jointe reste sur le téléphone jusqu'à la suppression définitive.
@@ -215,6 +248,9 @@ data class Depense(
     val dansCorbeille: Boolean get() = corbeilleLe != null
 
     val typeDepense: TypeDepense get() = TypeDepense.fromName(type)
+
+    /** Situation du repas, lue depuis le texte stocké. */
+    val situation: SituationRepas get() = SituationRepas.fromName(situationRepas)
 
     /** The trip question only means something for a train or a plane. */
     val trajetDemande: Boolean

@@ -4,12 +4,15 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +61,7 @@ fun Racine(
     val message by vm.message.collectAsStateWithLifecycle()
     val export by vm.export.collectAsStateWithLifecycle()
     val exportTrop by vm.exportTrop.collectAsStateWithLifecycle()
+    val controlesExport by vm.controlesExport.collectAsStateWithLifecycle()
     val archivageEnAttente by vm.archivageEnAttente.collectAsStateWithLifecycle()
     val envoi by vm.envoi.collectAsStateWithLifecycle()
     val envoiSuivant by vm.envoiSuivant.collectAsStateWithLifecycle()
@@ -364,6 +368,7 @@ fun Racine(
             tauxPour = vm::tauxBdf,
             moyensPaiement = moyensPaiement,
             organismes = parametres.organismes,
+            zoneParis = parametres.zoneParis,
         )
     }
 
@@ -381,6 +386,7 @@ fun Racine(
             // Un projet clôturé est en lecture seule : il n'est pas proposé.
             projetsCibles = tousProjets.filter { !it.cloture && it.id != initiale.projetId },
             onDeplacer = { cible -> vm.deplacerDepense(initiale, cible) },
+            zoneParis = parametres.zoneParis,
         )
     }
 
@@ -429,6 +435,31 @@ fun Racine(
                     TextButton(onClick = { vm.envoyerExportTelQuel() }) { Text("Envoyer tel quel") }
                     TextButton(onClick = { vm.annulerDecoupage() }) { Text("Annuler") }
                 }
+            },
+        )
+    }
+
+    // Justificatifs manquants relevés avant l'export : on les liste, mais rien
+    // n'est bloqué. « Exporter quand même » lance l'export, « Annuler » ferme.
+    controlesExport?.let { lignes ->
+        AlertDialog(
+            onDismissRequest = { vm.annulerExport() },
+            title = { Text("Justificatifs manquants") },
+            text = {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    lignes.forEach { ligne ->
+                        Text(ligne, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.confirmerExport() }) { Text("Exporter quand même") }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.annulerExport() }) { Text("Annuler") }
             },
         )
     }

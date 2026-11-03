@@ -38,11 +38,22 @@ object Plafonds {
     const val NUITEE_PROVINCE = 5680L
 
     /** Ceiling that applies to an expense, null when it has none. */
-    fun plafondCentimes(type: TypeDepense, zoneParis: Boolean): Long? = when (type) {
+    fun plafondCentimes(
+        type: TypeDepense,
+        zoneParis: Boolean,
+        situation: SituationRepas = SituationRepas.GRAND_DEPLACEMENT,
+    ): Long? = when (type) {
         TypeDepense.RESTAURANT_MIDI_SEUL,
         TypeDepense.RESTAURANT_MIDI_INVITE,
         TypeDepense.RESTAURANT_SOIR,
-        -> REPAS_RESTAURANT
+        // Le même repas n'ouvre pas le même plafond selon où il a été pris :
+        // sur le lieu de travail c'est 7,50 €, au restaurant sans déplacement
+        // contraint 10,40 €, et en grand déplacement 21,40 €.
+        -> when (situation) {
+            SituationRepas.LIEU_TRAVAIL -> REPAS_LIEU_TRAVAIL
+            SituationRepas.HORS_DEPLACEMENT -> REPAS_NON_CONTRAINT
+            SituationRepas.GRAND_DEPLACEMENT -> REPAS_RESTAURANT
+        }
 
         TypeDepense.PETIT_DEJEUNER -> PETIT_DEJEUNER
 
@@ -56,8 +67,13 @@ object Plafonds {
      * Warning to show when the amount is above the ceiling, null otherwise.
      * [parNuit] lets a hotel bill of several nights through.
      */
-    fun alerte(depense: Depense, zoneParis: Boolean, parNuit: Int = 1): String? {
-        val plafond = plafondCentimes(depense.typeDepense, zoneParis) ?: return null
+    fun alerte(
+        depense: Depense,
+        zoneParis: Boolean,
+        parNuit: Int = 1,
+        situation: SituationRepas = depense.situation,
+    ): String? {
+        val plafond = plafondCentimes(depense.typeDepense, zoneParis, situation) ?: return null
         val plafondTotal = plafond * parNuit.coerceAtLeast(1)
         if (depense.montantCentimes <= plafondTotal) return null
         val exces = depense.montantCentimes - plafondTotal
@@ -65,8 +81,12 @@ object Plafonds {
             "${montant(exces)} peuvent être réintégrés."
     }
 
-    fun libellePlafond(type: TypeDepense, zoneParis: Boolean): String? =
-        plafondCentimes(type, zoneParis)?.let { "Plafond $ANNEE : ${montant(it)}" }
+    fun libellePlafond(
+        type: TypeDepense,
+        zoneParis: Boolean,
+        situation: SituationRepas = SituationRepas.GRAND_DEPLACEMENT,
+    ): String? =
+        plafondCentimes(type, zoneParis, situation)?.let { "Plafond $ANNEE : ${montant(it)}" }
 
     private fun montant(centimes: Long): String =
         String.format(java.util.Locale.FRANCE, "%.2f €", centimes / 100.0)
@@ -98,5 +118,23 @@ object Doublons {
         val doublon = chercher(candidate, existantes) ?: return null
         val montant = String.format(java.util.Locale.FRANCE, "%.2f €", doublon.montantCentimes / 100.0)
         return "Dépense identique déjà enregistrée le ${doublon.date} : $montant ${doublon.typeDepense.label}"
+    }
+
+    /**
+     * Deux dépenses d'un même projet portant le même numéro de facture (non
+     * vide) sont presque sûrement la même facture : le numéro est un repère
+     * plus fiable que le montant ou la date, qui peuvent coïncider par hasard.
+     * La comparaison ignore la casse et les espaces de bord, mais garde la
+     * ponctuation interne (un tiret en plus = un autre numéro).
+     */
+    fun alerteNumero(candidate: Depense, existantes: List<Depense>): String? {
+        val numero = candidate.numFacture.trim()
+        if (numero.isBlank()) return null
+        val doublon = existantes.firstOrNull { autre ->
+            autre.id != candidate.id &&
+                autre.projetId == candidate.projetId &&
+                autre.numFacture.trim().equals(numero, ignoreCase = true)
+        } ?: return null
+        return "Facture n° ${doublon.numFacture.trim()} déjà enregistrée le ${doublon.date}"
     }
 }

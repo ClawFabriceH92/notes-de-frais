@@ -119,7 +119,7 @@ interface NotesDao {
     suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class, Profil::class], version = 13, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class, Profil::class], version = 14, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
     abstract fun profilsDao(): ProfilsDao
@@ -258,6 +258,19 @@ abstract class NotesDb : RoomDatabase() {
             }
         }
 
+        /**
+         * Numéro de facture et situation du repas. Le numéro sert de repère
+         * anti-doublon fiable ; la situation choisit le plafond d'exonération du
+         * repas. Les dépenses déjà saisies prennent le défaut : numéro vide et
+         * « grand déplacement », qui ne change rien à leur plafond historique.
+         */
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE depenses ADD COLUMN numFacture TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE depenses ADD COLUMN situationRepas TEXT NOT NULL DEFAULT 'GRAND_DEPLACEMENT'")
+            }
+        }
+
         fun get(context: Context): NotesDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
@@ -266,7 +279,7 @@ abstract class NotesDb : RoomDatabase() {
             ).addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                 MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
-                MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
+                MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
             ).build().also { instance = it }
         }
 

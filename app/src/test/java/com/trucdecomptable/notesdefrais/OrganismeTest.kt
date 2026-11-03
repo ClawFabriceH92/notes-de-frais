@@ -81,11 +81,11 @@ class OrganismeTest {
         ).first()
 
         val entetes = detail.lignes[0].map { it.texte }
-        assertEquals("Organisme", entetes[5])
-        assertEquals("Paiement", entetes[4])
-        assertEquals("Sens", entetes[6])
+        assertEquals("Organisme", entetes[6])
+        assertEquals("Paiement", entetes[5])
+        assertEquals("Sens", entetes[7])
 
-        assertEquals("FOROM", detail.lignes[1][5].texte)
-        assertEquals("", detail.lignes[2][5].texte.orEmpty())
+        assertEquals("FOROM", detail.lignes[1][6].texte)
+        assertEquals("", detail.lignes[2][6].texte.orEmpty())
     }
 }
