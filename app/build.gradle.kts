@@ -57,8 +57,8 @@ android {
         applicationId = "com.trucdecomptable.notesdefrais"
         minSdk = 26
         targetSdk = 35
-        versionCode = 32
-        versionName = "1.17.0"
+        versionCode = 33
+        versionName = "1.18.0"
         resourceConfigurations += listOf("fr")
     }
 
@@ -121,6 +121,10 @@ dependencies {
 
     // On-device OCR, no network, no data leaving the phone
     implementation("com.google.mlkit:text-recognition:16.0.1")
+
+    // On-device barcode reading for the ticket → invoice portals, same
+    // on-device model family as the OCR above
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     // APK download for the in-app updater
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

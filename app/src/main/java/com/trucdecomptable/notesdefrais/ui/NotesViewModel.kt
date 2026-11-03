@@ -1,6 +1,10 @@
 package com.trucdecomptable.notesdefrais.ui
 
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,6 +14,7 @@ import com.trucdecomptable.notesdefrais.data.BaremeKm
 import com.trucdecomptable.notesdefrais.data.Controles
 import com.trucdecomptable.notesdefrais.data.Depense
 import com.trucdecomptable.notesdefrais.data.Doublons
+import com.trucdecomptable.notesdefrais.data.Enseignes
 import com.trucdecomptable.notesdefrais.data.Justificatifs
 import com.trucdecomptable.notesdefrais.data.NotesDb
 import com.trucdecomptable.notesdefrais.data.Parametres
@@ -23,6 +28,7 @@ import com.trucdecomptable.notesdefrais.data.TypeDepense
 import com.trucdecomptable.notesdefrais.util.Compression
 import com.trucdecomptable.notesdefrais.export.ExportManager
 import com.trucdecomptable.notesdefrais.export.FeuilleDeRoutePdf
+import com.trucdecomptable.notesdefrais.ocr.CodeBarre
 import com.trucdecomptable.notesdefrais.ocr.ReceiptOcr
 import com.trucdecomptable.notesdefrais.ocr.ReceiptParser
 import com.trucdecomptable.notesdefrais.util.Diag
@@ -55,6 +61,18 @@ data class Envoi(
     val poids: Long get() = fichiers.sumOf { it.length() }
     val decoupe: Boolean get() = total > 1
 }
+
+/**
+ * Une facture vient d'être jointe à une dépense qui a déjà une pièce
+ * principale (le ticket) : on propose de retirer ce ticket pour ne pas garder
+ * deux pièces pour une seule dépense. Rien n'est supprimé sans l'accord de
+ * l'utilisateur.
+ */
+data class Remplacement(
+    val depense: Depense,
+    val nomFacture: String,
+    val nomTicket: String,
+)
 
 /**
  * One ViewModel for the whole app: projects, the selected project's expenses,
@@ -326,6 +344,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+
+    /** Propose de retirer le ticket quand une facture vient d'être jointe. */
+    private val _remplacementTicket = MutableStateFlow<Remplacement?>(null)
+    val remplacementTicket: StateFlow<Remplacement?> = _remplacementTicket.asStateFlow()
 
     /** Last expense saved straight from OCR, offered for a quick correction. */
     private val _derniere = MutableStateFlow<Depense?>(null)
@@ -600,6 +622,120 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             }.onFailure {
                 Diag.record("piece-jointe", it)
                 _message.value = "Ajout impossible : ${it.message ?: "erreur"}"
+            }
+        }
+    }
+
+    /**
+     * Depuis un ticket de caisse, ouvre le portail « facture en ligne » de
+     * l'enseigne reconnue et copie le numéro du code-barres du ticket dans le
+     * presse-papier, prêt à coller sur le site. Un échec de lecture du
+     * code-barres n'empêche pas d'ouvrir le portail : on le dit, et le numéro
+     * se saisit à la main.
+     */
+    fun ouvrirFactureEnLigne(depense: Depense) {
+        val enseigne = Enseignes.detecter(depense.texteOcr)
+        if (enseigne == null) {
+            _message.value = "Enseigne non reconnue : pas de facture en ligne connue"
+            return
+        }
+        viewModelScope.launch {
+            // Le numéro se lit sur la photo de la pièce principale ; sans
+            // lecture, on ouvre quand même le portail, sans rien à coller.
+            val code = runCatching {
+                val nom = depense.fichier?.takeIf { it.isNotBlank() } ?: return@runCatching null
+                val fichier = File(ExportManager.dossierJustificatifs(getApplication()), nom)
+                CodeBarre.meilleur(CodeBarre.lire(getApplication(), fichier))
+            }.onFailure { Diag.record("facture-en-ligne/code-barres", it) }.getOrNull()
+            runCatching {
+                if (code != null) {
+                    val presse = getApplication<Application>()
+                        .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    presse.setPrimaryClip(ClipData.newPlainText("ticket", code))
+                }
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(enseigne.urlFacture))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                getApplication<Application>().startActivity(intent)
+                _message.value = if (code != null) {
+                    "N° de ticket copié : $code — collez-le sur le site"
+                } else {
+                    "Code-barres non lu : ouvrez le site et saisissez le numéro"
+                }
+            }.onFailure {
+                Diag.record("facture-en-ligne", it)
+                _message.value = "Ouverture impossible : ${it.message ?: "erreur"}"
+            }
+        }
+    }
+
+    /**
+     * Joint une facture déjà récupérée (PDF ou photo) à une dépense, comme une
+     * pièce jointe : même stockage, même recadrage. Si la dépense a déjà une
+     * pièce principale (le ticket), on propose ensuite de retirer ce ticket
+     * pour éviter le doublon — jamais de suppression sans accord.
+     */
+    fun ajouterFacture(depense: Depense, uri: Uri) {
+        viewModelScope.launch {
+            runCatching {
+                val fichier = withContext(Dispatchers.IO) { ReceiptOcr.stocker(getApplication(), uri) }
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        ReceiptOcr.lire(
+                            getApplication(),
+                            fichier,
+                            recadrage = _parametres.value.recadrageAuto,
+                        )
+                    }.onFailure { Diag.record("facture/recadrage", it) }
+                }
+                val liste = depense.tousLesFichiers + fichier.name
+                val maj = depense.copy(fichiersSupplementaires = liste.drop(1).joinToString("|"))
+                dao.majDepense(maj)
+                _edition.value = maj
+                _message.value = "Facture jointe"
+                // Le ticket reste la pièce principale tant que l'utilisateur
+                // n'a pas accepté de le retirer.
+                depense.fichier?.takeIf { it.isNotBlank() }?.let { nomTicket ->
+                    _remplacementTicket.value = Remplacement(
+                        depense = maj,
+                        nomFacture = fichier.name,
+                        nomTicket = nomTicket,
+                    )
+                }
+            }.onFailure {
+                Diag.record("facture", it)
+                _message.value = "Ajout de la facture impossible : ${it.message ?: "erreur"}"
+            }
+        }
+    }
+
+    /** On garde les deux pièces : la proposition disparaît, rien ne change. */
+    fun refuserRemplacementTicket() {
+        _remplacementTicket.value = null
+        _message.value = "Les deux pièces sont conservées"
+    }
+
+    /**
+     * La facture devient la pièce principale, elle sort des annexes, et la
+     * photo du ticket est effacée du disque quand plus aucune dépense ne la
+     * référence. Acceptée uniquement depuis la fenêtre « Ticket et facture ».
+     */
+    fun remplacerTicketParFacture() {
+        val etat = _remplacementTicket.value ?: return
+        viewModelScope.launch {
+            runCatching {
+                val annexes = etat.depense.fichiersSupplementaires.split('|')
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() && it != etat.nomFacture }
+                    .joinToString("|")
+                val maj = etat.depense.copy(fichier = etat.nomFacture, fichiersSupplementaires = annexes)
+                dao.majDepense(maj)
+                withContext(Dispatchers.IO) { effacerFichiersInutiles(listOf(etat.nomTicket)) }
+                _edition.value = maj
+                _remplacementTicket.value = null
+                _message.value = "Ticket remplacé par la facture"
+            }.onFailure {
+                Diag.record("remplacement/ticket", it)
+                _message.value = "Remplacement impossible : ${it.message ?: "erreur"}"
             }
         }
     }

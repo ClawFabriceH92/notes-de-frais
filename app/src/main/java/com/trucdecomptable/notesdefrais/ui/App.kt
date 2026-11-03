@@ -76,6 +76,7 @@ fun Racine(
     val projetsArchives by vm.projetsArchives.collectAsStateWithLifecycle()
     val corbeille by vm.corbeille.collectAsStateWithLifecycle()
     val nbCorbeille by vm.nbCorbeille.collectAsStateWithLifecycle()
+    val remplacementTicket by vm.remplacementTicket.collectAsStateWithLifecycle()
 
     // Moyens de paiement proposés : les communs, plus ceux de la société en cours.
     val moyensPaiement = remember(parametres.moyensPaiement, profilActif) {
@@ -369,6 +370,8 @@ fun Racine(
             moyensPaiement = moyensPaiement,
             organismes = parametres.organismes,
             zoneParis = parametres.zoneParis,
+            onGenererFacture = vm::ouvrirFactureEnLigne,
+            onAjouterFacture = { uri -> vm.ajouterFacture(initiale, uri) },
         )
     }
 
@@ -387,6 +390,8 @@ fun Racine(
             projetsCibles = tousProjets.filter { !it.cloture && it.id != initiale.projetId },
             onDeplacer = { cible -> vm.deplacerDepense(initiale, cible) },
             zoneParis = parametres.zoneParis,
+            onGenererFacture = vm::ouvrirFactureEnLigne,
+            onAjouterFacture = { uri -> vm.ajouterFacture(initiale, uri) },
         )
     }
 
@@ -518,6 +523,24 @@ fun Racine(
             },
             confirmButton = { TextButton(onClick = { vm.envoyerEnvoiSuivant() }) { Text("Envoyer") } },
             dismissButton = { TextButton(onClick = { vm.arreterEnvois() }) { Text("Arrêter") } },
+        )
+    }
+
+    // Une facture vient d'être jointe à une dépense qui a déjà un ticket : on
+    // propose de retirer ce ticket. La suppression n'est jamais automatique.
+    remplacementTicket?.let {
+        AlertDialog(
+            onDismissRequest = { vm.refuserRemplacementTicket() },
+            title = { Text("Ticket et facture") },
+            text = {
+                Text("La facture est jointe. Supprimer la photo du ticket pour éviter un doublon ?")
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.remplacerTicketParFacture() }) { Text("Supprimer le ticket") }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.refuserRemplacementTicket() }) { Text("Garder les deux") }
+            },
         )
     }
 

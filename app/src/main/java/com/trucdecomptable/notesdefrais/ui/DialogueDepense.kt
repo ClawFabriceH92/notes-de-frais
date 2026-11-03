@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.trucdecomptable.notesdefrais.data.Controles
 import com.trucdecomptable.notesdefrais.data.Depense
+import com.trucdecomptable.notesdefrais.data.Enseignes
 import com.trucdecomptable.notesdefrais.data.Justificatifs
 import com.trucdecomptable.notesdefrais.data.Plafonds
 import com.trucdecomptable.notesdefrais.data.SensTrajet
@@ -80,6 +81,10 @@ fun DialogueDepense(
     // Paris (92, 93, 94) change le plafond de la nuitée ; il est transmis par
     // l'appelant, comme la situation du repas change le plafond repas.
     zoneParis: Boolean = false,
+    // Facture en ligne : ouvre le portail de l'enseigne, ou joint la facture
+    // déjà récupérée. Nullables car inutiles sur une nouvelle dépense.
+    onGenererFacture: ((Depense) -> Unit)? = null,
+    onAjouterFacture: ((android.net.Uri) -> Unit)? = null,
 ) {
     var date by remember { mutableStateOf(Dates.isoVersFr(initiale.date)) }
     var montant by remember { mutableStateOf(if (initiale.montantCentimes > 0) centimesVersTexte(initiale.montantCentimes) else "") }
@@ -113,6 +118,16 @@ fun DialogueDepense(
     val launcherPiece = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let { onAjouterPiece?.invoke(it) } }
+
+    val launcherFacture = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let { onAjouterFacture?.invoke(it) } }
+
+    // L'enseigne reconnue sur le texte OCR du ticket : c'est elle qui décide
+    // d'afficher la section « Facture ». Uniquement sur une dépense existante.
+    val enseigne = remember(initiale) {
+        if (initiale.id != 0L) Enseignes.detecter(initiale.texteOcr) else null
+    }
 
     // The rate is the Banque de France parity for the expense date, published
     // by trucdecomptable.fr. It fills the field, and stays editable.
@@ -508,6 +523,41 @@ fun DialogueDepense(
                             "Ajouter une pièce jointe" +
                                 if (initiale.tousLesFichiers.size > 1) " (${initiale.tousLesFichiers.size} déjà jointes)" else "",
                         )
+                    }
+                }
+
+                // Facture en ligne : quand l'OCR a reconnu l'enseigne d'un
+                // ticket, on propose de générer la vraie facture sur le site,
+                // puis de la joindre. Le ticket n'est retiré qu'avec accord.
+                if (enseigne != null) {
+                    Text("Facture", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "Ticket ${enseigne.nom} : générer la facture en ligne",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (enseigne.formulaireTicket) {
+                        // Le formulaire du site demande le numéro imprimé sur le
+                        // ticket ; la note précise les limites (délai…).
+                        if (enseigne.champDemande.isNotBlank()) {
+                            Text(enseigne.champDemande, style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (enseigne.note.isNotBlank()) {
+                            Text(enseigne.note, style = MaterialTheme.typography.bodySmall)
+                        }
+                    } else {
+                        // Pas de formulaire ticket → facture : tout passe par
+                        // l'espace client, on propose seulement le lien.
+                        Text("espace client", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (onGenererFacture != null) {
+                        TextButton(onClick = { onGenererFacture(initiale) }) {
+                            Text("Générer la facture")
+                        }
+                    }
+                    if (onAjouterFacture != null) {
+                        TextButton(onClick = { launcherFacture.launch(arrayOf("image/*", "application/pdf")) }) {
+                            Text("J'ai la facture")
+                        }
                     }
                 }
 
