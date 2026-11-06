@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,11 +37,15 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.trucdecomptable.notesdefrais.data.Depense
+import com.trucdecomptable.notesdefrais.data.Projet
+import com.trucdecomptable.notesdefrais.export.EnvoiMailto
+import com.trucdecomptable.notesdefrais.export.ExportManager
 import com.trucdecomptable.notesdefrais.data.Parametres
 import com.trucdecomptable.notesdefrais.update.UpdateManager
 import com.trucdecomptable.notesdefrais.util.Diag
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import java.io.File
 
 /** Whole app: projects, project detail, settings, dialogs and the update prompt. */
@@ -84,6 +89,7 @@ fun Racine(
     }
 
     val snackbar = remember { SnackbarHostState() }
+    val portee = rememberCoroutineScope()
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
     var reglages by remember { mutableStateOf(false) }
     var corbeilleOuverte by remember { mutableStateOf(false) }
@@ -157,7 +163,13 @@ fun Racine(
     }
 
     /** Plusieurs archives d'un coup (export découpé) : un seul partage. */
-    fun partagerPlusieurs(fichiers: List<File>, type: String, sujet: String, email: String) {
+    fun partagerPlusieurs(
+        fichiers: List<File>,
+        type: String,
+        sujet: String,
+        email: String,
+        corps: String? = null,
+    ) {
         try {
             val uris = ArrayList(
                 fichiers.map { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it) },
@@ -184,6 +196,55 @@ fun Racine(
             vm.signalerPartage(e)
         }
     }
+
+    /**
+     * Envoi rapide (icône e-mail de l'accueil) : rassemble les justificatifs du
+     * profil courant, les met en PDF et ouvre le mail prérempli vers l'adresse
+     * « mailto » du profil. Aucune note de frais à remplir, aucun projet à créer.
+     */
+    suspend fun envoyerMailtoRapide() {
+        val profil = profilActif
+        val adresse = profil?.emailMailto?.trim().orEmpty()
+        if (profil == null) {
+            vm.signaler("Choisis d'abord une société : l'adresse d'envoi y est rattachée.")
+            return
+        }
+        if (!EnvoiMailto.adresseValide(adresse)) {
+            vm.signaler(
+                "Renseigne l'adresse « mailto » de ${profil.nom} dans le paramétrage " +
+                    "pour utiliser l'envoi rapide.",
+            )
+            return
+        }
+        val depenses = vm.depensesDuProfil(profil.id)
+        if (depenses.isEmpty()) {
+            vm.signaler("Aucun justificatif à envoyer pour ${profil.nom}.")
+            return
+        }
+        // Un projet fictif ne sert qu'à nommer les fichiers produits : rien n'est
+        // enregistré en base, donc aucune note de frais n'apparaît.
+        val projetEnvoi = Projet(nom = "Envoi rapide", profilId = profil.id)
+        val fichiers = try {
+            ExportManager.justificatifsPdf(context, projetEnvoi, depenses, parametres, profil)
+        } catch (e: Exception) {
+            Diag.record("mailto/pdf", e)
+            vm.signaler("Impossible de préparer le PDF : ${e.message ?: e.javaClass.simpleName}")
+            return
+        }
+        if (fichiers.isEmpty()) {
+            vm.signaler("Aucun justificatif lisible pour ${profil.nom}.")
+            return
+        }
+        Diag.record("mailto", "envoi de ${fichiers.size} PDF à $adresse")
+        partagerPlusieurs(
+            fichiers = fichiers,
+            type = "application/pdf",
+            sujet = EnvoiMailto.sujet(profil.nom),
+            email = adresse,
+            corps = EnvoiMailto.corps(profil.nom, fichiers.size),
+        )
+    }
+
 
     // Messages: the one right after a save offers a one-tap correction.
     LaunchedEffect(message) {
@@ -309,6 +370,11 @@ fun Racine(
                 onArchiver = vm::demanderArchivage,
                 onVoirArchives = { archivesOuvertes = true },
                 nbArchives = projetsArchives.size,
+                onEnvoyerMailto = {
+                    // Envoi rapide : aucun formulaire à remplir, on prend les
+                    // justificatifs du profil et on les envoie en PDF.
+                    portee.launch { envoyerMailtoRapide() }
+                },
             )
 
             else -> if (corbeilleOuverte) {

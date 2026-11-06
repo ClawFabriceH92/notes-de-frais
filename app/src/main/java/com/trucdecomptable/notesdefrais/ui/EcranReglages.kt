@@ -461,6 +461,7 @@ private fun DialogueProfil(
     var siret by remember { mutableStateOf(initial.siret) }
     var adresse by remember { mutableStateOf(initial.adresse) }
     var email by remember { mutableStateOf(initial.emailDestinataire) }
+    var mailto by remember { mutableStateOf(initial.emailMailto) }
     var paiement by remember { mutableStateOf(initial.moyenPaiementDefaut) }
     // Moyens propres à la société, ajoutés en plus des moyens communs.
     var propres by remember { mutableStateOf(initial.moyens) }
@@ -529,6 +530,21 @@ private fun DialogueProfil(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth(),
+                )
+                // Adresse de l'envoi rapide : distincte de l'export complet.
+                OutlinedTextField(
+                    value = mailto,
+                    onValueChange = { mailto = it },
+                    label = { Text("Mailto (envoi rapide, sans note de frais)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "L'icône e-mail de l'accueil envoie les justificatifs de cette société " +
+                        "en PDF à cette adresse, sans note de frais à remplir.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
                 )
                 // Moyens de paiement : les communs s'appliquent à tous les
                 // justificatifs et ne se suppriment pas ici ; la société peut
@@ -645,6 +661,7 @@ private fun DialogueProfil(
                             siret = siret.trim(),
                             adresse = adresse.trim(),
                             emailDestinataire = email.trim(),
+                            emailMailto = mailto.trim(),
                             moyenPaiementDefaut = paiement.trim(),
                             moyensPaiement = propres.joinToString("|"),
                         ),

@@ -143,6 +143,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Supprimer une société ne perd pas ses projets : ils repassent en « sans société ». */
+    /** Dépenses de tous les projets d'un profil, pour l'envoi rapide. */
+    suspend fun depensesDuProfil(profilId: Long): List<Depense> =
+        withContext(Dispatchers.IO) { dao.depensesDuProfil(profilId) }
+
     fun supprimerProfil(profil: Profil) {
         viewModelScope.launch {
             profilsDao.transfererProjets(profil.id, 0)
@@ -1318,6 +1322,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
      * Un partage raté doit se voir : l'app ne peut pas ouvrir la messagerie,
      * mais elle peut dire pourquoi au lieu d'échouer en silence.
      */
+    /** Message court affiché en bas de l'écran (succès ou refus explicite). */
+    fun signaler(texte: String) {
+        _message.value = texte
+    }
+
     fun signalerPartage(erreur: Throwable) {
         _message.value = "Partage impossible : ${erreur.message ?: erreur.javaClass.simpleName}"
     }

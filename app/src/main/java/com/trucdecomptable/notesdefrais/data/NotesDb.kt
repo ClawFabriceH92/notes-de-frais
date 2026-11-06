@@ -68,6 +68,17 @@ interface NotesDao {
     @Query("SELECT * FROM depenses ORDER BY date ASC")
     suspend fun toutesLesDepenses(): List<Depense>
 
+    /**
+     * Toutes les dépenses non jetées d'un profil, projets confondus : c'est la
+     * matière de l'envoi rapide par e-mail, qui ne demande aucune note de frais
+     * à remplir.
+     */
+    @Query(
+        "SELECT d.* FROM depenses d INNER JOIN projets p ON d.projetId = p.id " +
+            "WHERE p.profilId = :profilId AND d.corbeilleLe IS NULL ORDER BY d.date ASC, d.creeLe ASC",
+    )
+    suspend fun depensesDuProfil(profilId: Long): List<Depense>
+
     /** Les dépenses supprimées, de la plus récemment jetée à la plus ancienne. */
     @Query("SELECT * FROM depenses WHERE projetId = :projetId AND corbeilleLe IS NOT NULL ORDER BY corbeilleLe DESC")
     fun corbeille(projetId: Long): Flow<List<Depense>>
@@ -119,7 +130,7 @@ interface NotesDao {
     suspend fun remplirMoyenPaiement(moyen: String): Int
 }
 
-@Database(entities = [Projet::class, Depense::class, Profil::class], version = 14, exportSchema = false)
+@Database(entities = [Projet::class, Depense::class, Profil::class], version = 15, exportSchema = false)
 abstract class NotesDb : RoomDatabase() {
     abstract fun dao(): NotesDao
     abstract fun profilsDao(): ProfilsDao
@@ -133,6 +144,13 @@ abstract class NotesDb : RoomDatabase() {
          * must never wipe the expenses already recorded. Columns are added with
          * defaults, so earlier rows stay valid.
          */
+        /** 14 -> 15 : adresse d'envoi rapide sur les profils. */
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE profils ADD COLUMN emailMailto TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE depenses ADD COLUMN distanceKm INTEGER")
@@ -280,6 +298,7 @@ abstract class NotesDb : RoomDatabase() {
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                 MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
                 MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
+                MIGRATION_14_15,
             ).build().also { instance = it }
         }
 

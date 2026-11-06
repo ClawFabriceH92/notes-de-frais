@@ -78,6 +78,13 @@ data class Profil(
     /** Destinataire des exports pour cette société ; vide = celui du paramétrage. */
     val emailDestinataire: String = "",
     /**
+     * Adresse de l'envoi rapide (icône e-mail de l'accueil) : les justificatifs
+     * partent en PDF à cette adresse, sans passer par une note de frais à
+     * remplir. Volontairement distincte de [emailDestinataire], qui reçoit les
+     * exports complets.
+     */
+    val emailMailto: String = "",
+    /**
      * Moyen de paiement proposé par défaut sur les dépenses de cette société ;
      * vide = celui du paramétrage général.
      */

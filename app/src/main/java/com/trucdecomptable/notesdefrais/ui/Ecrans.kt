@@ -43,6 +43,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -89,6 +90,8 @@ fun EcranProjets(
     onArchiver: (Projet) -> Unit = {},
     onVoirArchives: () -> Unit = {},
     nbArchives: Int = 0,
+    /** Envoi rapide : justificatifs du profil en PDF, sans note de frais. */
+    onEnvoyerMailto: () -> Unit = {},
 ) {
     var nouveau by remember { mutableStateOf<String?>(null) }
     var renomme by remember { mutableStateOf<Projet?>(null) }
@@ -131,8 +134,18 @@ fun EcranProjets(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { nouveau = "" }) {
-                Icon(Icons.Default.Add, contentDescription = "Nouveau projet")
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                // Envoi rapide : les justificatifs de la société partent en PDF,
+                // sans note de frais à remplir. À côté du « + ».
+                SmallFloatingActionButton(onClick = onEnvoyerMailto) {
+                    Icon(Icons.Default.Email, contentDescription = "Envoyer les justificatifs par e-mail")
+                }
+                FloatingActionButton(onClick = { nouveau = "" }) {
+                    Icon(Icons.Default.Add, contentDescription = "Nouveau projet")
+                }
             }
         },
     ) { padding ->
