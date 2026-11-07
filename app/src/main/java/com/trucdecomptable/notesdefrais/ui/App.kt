@@ -532,12 +532,12 @@ fun Racine(
         )
     }
 
-    // Justificatifs manquants relevés avant l'export : on les liste, mais rien
+    // Justificatifs manquants et taux absents relevés avant l'export : on les liste, mais rien
     // n'est bloqué. « Exporter quand même » lance l'export, « Annuler » ferme.
     controlesExport?.let { lignes ->
         AlertDialog(
             onDismissRequest = { vm.annulerExport() },
-            title = { Text("Justificatifs manquants") },
+            title = { Text("Contrôle avant export") },
             text = {
                 Column(
                     Modifier.verticalScroll(rememberScrollState()),

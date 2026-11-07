@@ -480,7 +480,7 @@ object ExportManager {
                 XlsxWriter.Cellule(texte = d.motifRepas),
                 XlsxWriter.Cellule(nombre = d.montantCentimes / 100.0, style = XlsxWriter.MONTANT),
                 XlsxWriter.Cellule(texte = d.devise),
-                d.tauxChange?.let { XlsxWriter.Cellule(nombre = it, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),
+                d.tauxChange?.let { XlsxWriter.Cellule(nombre = it, style = XlsxWriter.TAUX) } ?: XlsxWriter.Cellule(),
                 eur?.let { XlsxWriter.Cellule(nombre = it, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),
                 d.tvaTauxBp?.let { XlsxWriter.Cellule(nombre = it / 100.0, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),
                 ht?.let { XlsxWriter.Cellule(nombre = it, style = XlsxWriter.MONTANT) } ?: XlsxWriter.Cellule(),

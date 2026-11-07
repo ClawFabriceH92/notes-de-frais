@@ -20,7 +20,7 @@ class XlsxWriter {
         val nombre: Double? = null,
         val style: Int = NORMAL,
     ) {
-        val vide: Boolean get() = texte == null && nombre == null
+        val vide: Boolean get() = texte == null && (nombre == null || !nombre.isFinite())
     }
 
     class Feuille(val nom: String) {
@@ -42,6 +42,8 @@ class XlsxWriter {
         const val GRAS = 1
         const val MONTANT = 2
         const val GRAS_MONTANT = 3
+        /** Exchange rate: kept to its full precision, shown with 4 decimals. */
+        const val TAUX = 4
 
         /**
          * Un flux qui ne referme pas celui qu'il enveloppe. Un classeur écrit
@@ -138,7 +140,7 @@ $sheets
                     val ref = "${colonne(indexColonne)}${indexLigne + 1}"
                     when {
                         cellule.nombre != null ->
-                            append("""<c r="$ref" s="${cellule.style}"><v>${nombre(cellule.nombre)}</v></c>""")
+                            append("""<c r="$ref" s="${cellule.style}"><v>${nombre(cellule.nombre, cellule.style)}</v></c>""")
 
                         else ->
                             append(
@@ -166,9 +168,12 @@ $sheets
         return sb.toString()
     }
 
-    private fun nombre(valeur: Double): String =
-        if (valeur == valeur.toLong().toDouble()) valeur.toLong().toString()
-        else String.format(java.util.Locale.US, "%.2f", valeur)
+    private fun nombre(valeur: Double, style: Int = NORMAL): String = when {
+        // Un taux n'est jamais arrondi : 1,1205 doit rester 1,1205.
+        style == TAUX -> java.math.BigDecimal.valueOf(valeur).stripTrailingZeros().toPlainString()
+        valeur == valeur.toLong().toDouble() -> valeur.toLong().toString()
+        else -> String.format(java.util.Locale.US, "%.2f", valeur)
+    }
 
     private fun echapper(texte: String): String = texte
         .replace("&", "&amp;")
@@ -179,16 +184,17 @@ $sheets
 
     private val STYLES_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts>
+<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="0.0000"/></numFmts>
 <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
 <fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
 <borders count="1"><border/></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="4">
+<cellXfs count="5">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
 <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
 <xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>
+<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>"""

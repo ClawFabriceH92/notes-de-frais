@@ -87,7 +87,8 @@ object Controles {
      * supplémentaire (une seule pièce = le ticket, donc la facture nominative
      * est probablement absente). La première ligne, quand il y a des pièces
      * manquantes, est un en-tête chiffré. Rien n'est bloqué : c'est l'UI qui
-     * décide « Exporter quand même » ou « Annuler ».
+     * décide « Exporter quand même » ou « Annuler ». Les dépenses en devise sans
+     * taux de change sont signalées à la suite : elles sont absentes du total EUR.
      */
     fun controleAvantExport(depenses: List<Depense>): List<String> {
         val lignes = mutableListOf<String>()
@@ -107,6 +108,13 @@ object Controles {
         if (sansJustificatif > 0) {
             val mot = if (sansJustificatif > 1) "dépenses" else "dépense"
             lignes.add(0, "$sansJustificatif $mot sans justificatif sur ${depenses.size}")
+        }
+        // Une devise sans taux n'entre pas dans le total EUR : l'export le sous-évaluerait.
+        val sansTaux = depenses.filter { it.montantEurCentimes == null }
+        if (sansTaux.isNotEmpty()) {
+            val mot = if (sansTaux.size > 1) "dépenses" else "dépense"
+            lignes += "${sansTaux.size} $mot en devise sans taux de change : total EUR incomplet"
+            sansTaux.forEach { lignes += "Sans taux de change : ${description(it)} (${it.devise})" }
         }
         return lignes
     }
