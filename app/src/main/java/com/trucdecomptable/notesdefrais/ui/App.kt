@@ -182,7 +182,9 @@ fun Racine(
                 putExtra(Intent.EXTRA_SUBJECT, sujet)
                 if (email.isNotBlank()) {
                     putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
-                    putExtra(Intent.EXTRA_TEXT, "Notes de frais : $sujet")
+                    putExtra(Intent.EXTRA_TEXT, corps ?: "Notes de frais : $sujet")
+                } else {
+                    corps?.let { putExtra(Intent.EXTRA_TEXT, it) }
                 }
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
@@ -313,7 +315,8 @@ fun Racine(
             fichier = fichier,
             type = "application/zip",
             sujet = "Sauvegarde Notes de frais · ${parametres.mention}",
-            email = parametres.emailDestinataire,
+            // Jamais pré-adressée : elle contient toute la base et les pièces.
+            email = "",
         )
         vm.sauvegardeConsommee()
     }
@@ -326,7 +329,8 @@ fun Racine(
             fichier = fichier,
             type = "application/json",
             sujet = "Paramétrage Notes de frais · ${parametres.mention}",
-            email = parametres.emailDestinataire,
+            // Jamais pré-adressé : le fichier contient les réglages de l'application.
+            email = "",
         )
         vm.fichierParametresConsomme()
     }
