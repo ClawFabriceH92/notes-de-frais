@@ -92,6 +92,8 @@ fun Racine(
     val portee = rememberCoroutineScope()
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
     var reglages by remember { mutableStateOf(false) }
+    // Envoi rapide : la fenêtre s'ouvre depuis l'icône e-mail de l'accueil.
+    var dialogueMailto by remember { mutableStateOf(false) }
     var corbeilleOuverte by remember { mutableStateOf(false) }
     var archivesOuvertes by remember { mutableStateOf(false) }
     var indemnite by remember { mutableStateOf(false) }
@@ -202,28 +204,33 @@ fun Racine(
      * profil courant, les met en PDF et ouvre le mail prérempli vers l'adresse
      * « mailto » du profil. Aucune note de frais à remplir, aucun projet à créer.
      */
-    suspend fun envoyerMailtoRapide() {
+    suspend fun envoyerMailtoRapide(adresseDemandee: String, projetChoisi: Projet?) {
         val profil = profilActif
-        val adresse = profil?.emailMailto?.trim().orEmpty()
         if (profil == null) {
             vm.signaler("Choisis d'abord une société : l'adresse d'envoi y est rattachée.")
             return
         }
+        val adresse = adresseDemandee.trim().ifBlank { profil.emailMailto.trim() }
         if (!EnvoiMailto.adresseValide(adresse)) {
-            vm.signaler(
-                "Renseigne l'adresse « mailto » de ${profil.nom} dans le paramétrage " +
-                    "pour utiliser l'envoi rapide.",
-            )
+            vm.signaler("Adresse d'envoi invalide : rien n'a été envoyé.")
             return
         }
-        val depenses = vm.depensesDuProfil(profil.id)
+        val depenses = if (projetChoisi != null) {
+            vm.depensesDuProjet(projetChoisi.id)
+        } else {
+            vm.depensesDuProfil(profil.id)
+        }
         if (depenses.isEmpty()) {
-            vm.signaler("Aucun justificatif à envoyer pour ${profil.nom}.")
+            val ou = projetChoisi?.let { "le projet ${it.nom}" } ?: profil.nom
+            vm.signaler("Aucun justificatif à envoyer pour $ou.")
             return
         }
         // Un projet fictif ne sert qu'à nommer les fichiers produits : rien n'est
         // enregistré en base, donc aucune note de frais n'apparaît.
-        val projetEnvoi = Projet(nom = "Envoi rapide", profilId = profil.id)
+        val projetEnvoi = Projet(
+            nom = projetChoisi?.nom ?: "Envoi rapide",
+            profilId = profil.id,
+        )
         val fichiers = try {
             ExportManager.justificatifsPdf(context, projetEnvoi, depenses, parametres, profil)
         } catch (e: Exception) {
@@ -239,9 +246,9 @@ fun Racine(
         partagerPlusieurs(
             fichiers = fichiers,
             type = "application/pdf",
-            sujet = EnvoiMailto.sujet(profil.nom),
+            sujet = EnvoiMailto.sujet(profil.nom, nomProjet = projetChoisi?.nom),
             email = adresse,
-            corps = EnvoiMailto.corps(profil.nom, fichiers.size),
+            corps = EnvoiMailto.corps(profil.nom, fichiers.size, nomProjet = projetChoisi?.nom),
         )
     }
 
@@ -257,6 +264,21 @@ fun Racine(
         if (resultat == SnackbarResult.ActionPerformed) derniere?.let(vm::editer)
         vm.messageLu()
         vm.derniereOubliee()
+    }
+
+    // Fenêtre d'envoi rapide : adresse modifiable et portée au choix.
+    if (dialogueMailto) {
+        val projetsDuProfil = projets
+        DialogueEnvoiRapide(
+            nomProfil = profilActif?.nom.orEmpty().ifBlank { "la société en cours" },
+            projets = projetsDuProfil,
+            adresseInitiale = profilActif?.emailMailto.orEmpty(),
+            onFermer = { dialogueMailto = false },
+            onEnvoyer = { adresse, projetChoisi ->
+                dialogueMailto = false
+                portee.launch { envoyerMailtoRapide(adresse, projetChoisi) }
+            },
+        )
     }
 
     // The ZIP goes to the configured recipient, or wherever the user picks.
@@ -370,11 +392,7 @@ fun Racine(
                 onArchiver = vm::demanderArchivage,
                 onVoirArchives = { archivesOuvertes = true },
                 nbArchives = projetsArchives.size,
-                onEnvoyerMailto = {
-                    // Envoi rapide : aucun formulaire à remplir, on prend les
-                    // justificatifs du profil et on les envoie en PDF.
-                    portee.launch { envoyerMailtoRapide() }
-                },
+                onEnvoyerMailto = { dialogueMailto = true },
             )
 
             else -> if (corbeilleOuverte) {

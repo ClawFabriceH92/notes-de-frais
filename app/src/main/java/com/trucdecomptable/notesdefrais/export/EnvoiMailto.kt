@@ -28,18 +28,25 @@ object EnvoiMailto {
             !propre.contains(' ')
     }
 
-    /** Objet du message, lisible dans une boîte mail partagée. */
-    fun sujet(nomProfil: String, jour: LocalDate = LocalDate.now()): String {
+    /**
+     * Objet du message, lisible dans une boîte mail partagée. [nomProjet] est
+     * ajouté quand l'envoi ne couvre qu'un projet, pour distinguer les envois
+     * successifs d'une même société.
+     */
+    fun sujet(nomProfil: String, jour: LocalDate = LocalDate.now(), nomProjet: String? = null): String {
         val societe = nomProfil.trim().ifBlank { "sans société" }
-        return "Notes de frais – $societe – ${jour.format(FORMAT_JOUR)}"
+        val projet = nomProjet?.trim().orEmpty()
+        val milieu = if (projet.isEmpty()) societe else "$societe – $projet"
+        return "Notes de frais – $milieu – ${jour.format(FORMAT_JOUR)}"
     }
 
     /** Corps du message : dit ce qui est joint, et par où cela a été envoyé. */
-    fun corps(nomProfil: String, nombreJustificatifs: Int): String {
+    fun corps(nomProfil: String, nombreJustificatifs: Int, nomProjet: String? = null): String {
         val societe = nomProfil.trim().ifBlank { "sans société" }
+        val quoi = nomProjet?.trim().takeUnless { it.isNullOrEmpty() }?.let { "$societe, projet $it" } ?: societe
         val pluriel = if (nombreJustificatifs > 1) "s" else ""
         return "Bonjour,\n\n" +
-            "Ci-joint les justificatifs de $societe, au format PDF " +
+            "Ci-joint les justificatifs de $quoi, au format PDF " +
             "(${nombreJustificatifTexte(nombreJustificatifs, pluriel)}).\n\n" +
             "Envoyé depuis l'application Notes de frais, en mode envoi rapide " +
             "(aucune note de frais n'a été remplie).\n"

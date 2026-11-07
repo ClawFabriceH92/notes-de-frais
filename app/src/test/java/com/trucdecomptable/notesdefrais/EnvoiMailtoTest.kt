@@ -54,4 +54,25 @@ class EnvoiMailtoTest {
     fun `corps rappelle qu aucune note de frais n a ete remplie`() {
         assertTrue(EnvoiMailto.corps("Cabinet", 2).contains("aucune note de frais"))
     }
+
+    @Test
+    fun `objet precise le projet quand l envoi est limite`() {
+        val sujet = EnvoiMailto.sujet("Cabinet", LocalDate.of(2026, 11, 6), nomProjet = "Mission Lyon")
+        assertEquals("Notes de frais – Cabinet – Mission Lyon – 06/11/2026", sujet)
+    }
+
+    @Test
+    fun `projet vide ou blanc ne pollue pas l objet`() {
+        val jour = LocalDate.of(2026, 11, 6)
+        assertEquals(
+            EnvoiMailto.sujet("Cabinet", jour, nomProjet = null),
+            EnvoiMailto.sujet("Cabinet", jour, nomProjet = "   "),
+        )
+    }
+
+    @Test
+    fun `corps mentionne le projet quand il y en a un`() {
+        assertTrue(EnvoiMailto.corps("Cabinet", 2, nomProjet = "Mission Lyon").contains("Cabinet, projet Mission Lyon"))
+        assertTrue(EnvoiMailto.corps("Cabinet", 2).contains("justificatifs de Cabinet,"))
+    }
 }

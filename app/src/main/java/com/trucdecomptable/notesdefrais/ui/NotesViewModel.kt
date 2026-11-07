@@ -143,6 +143,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Supprimer une société ne perd pas ses projets : ils repassent en « sans société ». */
+    /** Dépenses d'un seul projet, pour un envoi rapide limité à ce projet. */
+    suspend fun depensesDuProjet(projetId: Long): List<Depense> =
+        withContext(Dispatchers.IO) { dao.depensesSync(projetId) }
+
     /** Dépenses de tous les projets d'un profil, pour l'envoi rapide. */
     suspend fun depensesDuProfil(profilId: Long): List<Depense> =
         withContext(Dispatchers.IO) { dao.depensesDuProfil(profilId) }
