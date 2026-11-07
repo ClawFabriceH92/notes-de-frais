@@ -304,6 +304,17 @@ data class Depense(
 
     val estIndemniteKm: Boolean get() = typeDepense == TypeDepense.INDENNITE_KM
 
+    /**
+     * This expense with one more attachment. Without a main file the new one
+     * becomes the main file; otherwise it joins the extra ones, which are all
+     * kept.
+     */
+    fun avecPiece(nom: String): Depense {
+        if (fichier.isNullOrBlank()) return copy(fichier = nom)
+        val annexes = fichiersSupplementaires.split('|').map { it.trim() }.filter { it.isNotBlank() }
+        return copy(fichiersSupplementaires = (annexes + nom).joinToString("|"))
+    }
+
     /** Every attachment of the expense, the main one first. */
     val tousLesFichiers: List<String>
         get() = buildList {
