@@ -336,6 +336,28 @@ private fun CarteProjet(
     onArchiver: () -> Unit = {},
 ) {
     var menu by remember { mutableStateOf(false) }
+    var confirmerSuppression by remember { mutableStateOf(false) }
+    if (confirmerSuppression) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmerSuppression = false },
+            title = { Text("Supprimer le projet ?") },
+            text = {
+                Text(
+                    "« ${projet.nom} » et toutes ses dépenses (corbeille comprise) seront " +
+                        "supprimés. C'est irréversible.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmerSuppression = false
+                        onSupprimer(projet)
+                    },
+                ) { Text("Supprimer", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmerSuppression = false }) { Text("Annuler") } },
+        )
+    }
     Card(
         onClick = { onOuvrir(projet) },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -391,7 +413,7 @@ private fun CarteProjet(
                     DropdownMenuItem(
                         text = { Text("Supprimer") },
                         leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                        onClick = { menu = false; onSupprimer(projet) },
+                        onClick = { menu = false; confirmerSuppression = true },
                     )
                 }
             }

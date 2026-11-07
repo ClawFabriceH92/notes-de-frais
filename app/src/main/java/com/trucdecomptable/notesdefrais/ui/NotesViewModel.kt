@@ -622,8 +622,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }.onFailure { Diag.record("piece-jointe/recadrage", it) }
                 }
-                val liste = depense.tousLesFichiers + fichier.name
-                val maj = depense.copy(fichiersSupplementaires = liste.drop(1).joinToString("|"))
+                val maj = (dao.depense(depense.id) ?: depense).avecPiece(fichier.name)
                 dao.majDepense(maj)
                 _edition.value = maj
                 _message.value = "Pièce jointe ajoutée"
@@ -695,8 +694,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }.onFailure { Diag.record("facture/recadrage", it) }
                 }
-                val liste = depense.tousLesFichiers + fichier.name
-                val maj = depense.copy(fichiersSupplementaires = liste.drop(1).joinToString("|"))
+                val maj = (dao.depense(depense.id) ?: depense).avecPiece(fichier.name)
                 dao.majDepense(maj)
                 _edition.value = maj
                 _message.value = "Facture jointe"

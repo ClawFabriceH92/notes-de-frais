@@ -117,6 +117,30 @@ class ExportTest {
         assertTrue(synthese.contains("337.5") || synthese.contains("337.50"))
     }
 
+    @Test
+    fun `le taux de change garde sa precision dans le xlsx`() {
+        val projet = Projet(id = 1, nom = "Mission New York")
+        val depenses = listOf(
+            Depense(
+                projetId = 1, date = "2026-10-12", montantCentimes = 10000, devise = "USD",
+                tauxChange = 1.1205, type = TypeDepense.HOTEL.name,
+            ),
+        )
+        val sortie = ByteArrayOutputStream()
+        XlsxWriter().ecrire(ExportManager.feuilles(projet, depenses), sortie)
+
+        var detail = ""
+        ZipInputStream(sortie.toByteArray().inputStream()).use { zip ->
+            var entree = zip.nextEntry
+            while (entree != null) {
+                if (entree.name == "xl/worksheets/sheet1.xml") detail = zip.readBytes().toString(Charsets.UTF_8)
+                zip.closeEntry()
+                entree = zip.nextEntry
+            }
+        }
+        assertTrue(detail.contains("<v>1.1205</v>"))
+    }
+
     /**
      * Régression : le classeur est lui-même un ZIP. Écrit directement dans une
      * entrée du ZIP d'export, il refermait le flux parent, et l'entrée suivante

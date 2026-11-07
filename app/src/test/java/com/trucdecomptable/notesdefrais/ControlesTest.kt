@@ -166,6 +166,36 @@ class ControlesTest {
         assertTrue(lignes[0].contains("Facture probablement absente"))
     }
 
+    @Test
+    fun `depense en devise sans taux est signalee avant export`() {
+        val d = Depense(
+            projetId = 1,
+            date = "2026-10-10",
+            montantCentimes = 5000,
+            devise = "USD",
+            type = TypeDepense.TRAIN.name,
+            fichier = "ticket.jpg",
+        )
+        val lignes = Controles.controleAvantExport(listOf(d))
+        assertEquals(2, lignes.size)
+        assertEquals("1 dépense en devise sans taux de change : total EUR incomplet", lignes[0])
+        assertTrue(lignes[1].contains("USD"))
+    }
+
+    @Test
+    fun `depense en devise avec taux - pas de signalement de taux`() {
+        val d = Depense(
+            projetId = 1,
+            date = "2026-10-10",
+            montantCentimes = 5000,
+            devise = "USD",
+            tauxChange = 1.1205,
+            type = TypeDepense.TRAIN.name,
+            fichier = "ticket.jpg",
+        )
+        assertTrue(Controles.controleAvantExport(listOf(d)).isEmpty())
+    }
+
     // -------------------------------------------------------------- synthèse
 
     @Test
