@@ -235,4 +235,46 @@ class ReceiptParserTest {
         assertEquals(124850L, ReceiptParser.montantDe("1,248.50"))
         assertNull(ReceiptParser.montantDe("12/10/2026"))
     }
+
+    @Test
+    fun `telephone en jj mm aa impossible ne leve pas et la vraie date est gardee`() {
+        val champs = ReceiptParser.parse("Tel 02.31.12.34.56\n$jour/$mois/$annee\nTOTAL 12,00")
+
+        assertEquals(recent, champs.date)
+        assertEquals(1200L, champs.montantCentimes)
+    }
+
+    @Test
+    fun `date inexistante ne leve pas`() {
+        assertNull(ReceiptParser.parse("31/04/$annee").date)
+        assertNull(ReceiptParser.parse("Tel 04.31.45.67.89\nTOTAL 3,00").date)
+    }
+
+    @Test
+    fun `date seulement invraisemblable donne null et non la plus grande`() {
+        assertNull(ReceiptParser.parse("Tel 03.20.12.34.56\nTOTAL 5,00").date)
+    }
+
+    @Test
+    fun `les douze mois en lettres sont reconnus longs abreges et avec point`() {
+        val an = LocalDate.now().year - 1
+        val longs = listOf(
+            "janvier", "février", "mars", "avril", "mai", "juin",
+            "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+        )
+        val abreges = listOf(
+            "janv", "févr", "mars", "avr", "mai", "juin",
+            "juil", "août", "sept", "oct", "nov", "déc",
+        )
+        for (m in 1..12) {
+            val attendu = LocalDate.of(an, m, 15).toString()
+            val variantes = listOf(
+                longs[m - 1], longs[m - 1].uppercase(), abreges[m - 1], abreges[m - 1] + ".",
+            )
+            for (nom in variantes) {
+                val champs = ReceiptParser.parse("15 $nom $an\nTOTAL 10,00")
+                assertEquals("mois « $nom »", attendu, champs.date)
+            }
+        }
+    }
 }

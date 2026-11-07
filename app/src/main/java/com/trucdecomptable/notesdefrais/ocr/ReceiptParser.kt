@@ -142,7 +142,7 @@ object ReceiptParser {
 
         DATE_ISO.findAll(brut).forEach { m ->
             val (a, mo, j) = m.destructured
-            candidats += LocalDate.of(a.toInt(), mo.toInt(), j.toInt())
+            dateValide(a.toInt(), mo.toInt(), j.toInt())?.let(candidats::add)
         }
         DATE_NUM.findAll(brut).forEach { m ->
             val (j, mo, a) = m.destructured
@@ -150,21 +150,26 @@ object ReceiptParser {
             val jour = j.toInt()
             val mois = mo.toInt()
             // French tickets are day-first; a "month" above 12 proves it.
-            if (mois in 1..12 && jour in 1..31) candidats += LocalDate.of(annee, mois, jour)
-            else if (jour in 1..12 && mois in 1..31) candidats += LocalDate.of(annee, jour, mois)
+            if (mois in 1..12 && jour in 1..31) dateValide(annee, mois, jour)?.let(candidats::add)
+            else if (jour in 1..12 && mois in 1..31) dateValide(annee, jour, mois)?.let(candidats::add)
         }
         DATE_TEXTE.findAll(brut).forEach { m ->
             val (j, nomMois, a) = m.destructured
             val mois = numeroMois(nomMois) ?: return@forEach
             val annee = quandAnnee(a.toInt())
-            candidats += LocalDate.of(annee, mois, j.toInt())
+            dateValide(annee, mois, j.toInt())?.let(candidats::add)
         }
 
         val aujourdhui = LocalDate.now()
         val plausibles = candidats.filter { !it.isAfter(aujourdhui.plusDays(1)) && it.isAfter(aujourdhui.minusDays(MAX_AGE_DAYS)) }
         // A recent ticket is what the user is photographing: take the most recent.
-        return (plausibles.ifEmpty { candidats }).maxOrNull()
+        // No plausible candidate (phone number, old or future date): ask rather than guess.
+        return plausibles.maxOrNull()
     }
+
+    /** Null when the day does not exist (31/04, 30/02...), so a phone number cannot throw. */
+    private fun dateValide(annee: Int, mois: Int, jour: Int): LocalDate? =
+        runCatching { LocalDate.of(annee, mois, jour) }.getOrNull()
 
     private fun quandAnnee(valeur: Int): Int = when {
         valeur > 999 -> valeur
@@ -173,20 +178,20 @@ object ReceiptParser {
     }
 
     private fun numeroMois(nom: String): Int? {
-        val n = sansAccents(nom).lowercase().take(4)
+        val n = sansAccents(nom).lowercase()
         return when {
             n.startsWith("janv") -> 1
-            n.startsWith("fevr") -> 2
-            n.startsWith("mars") -> 3
-            n.startsWith("avri") -> 4
+            n.startsWith("fev") -> 2
+            n.startsWith("mar") -> 3
+            n.startsWith("avr") -> 4
             n.startsWith("mai") -> 5
             n.startsWith("juin") -> 6
             n.startsWith("juil") -> 7
-            n.startsWith("aout") -> 8
-            n.startsWith("sept") -> 9
-            n.startsWith("octo") || n.startsWith("oct") -> 10
-            n.startsWith("nove") -> 11
-            n.startsWith("dece") -> 12
+            n.startsWith("ao") -> 8
+            n.startsWith("sep") -> 9
+            n.startsWith("oct") -> 10
+            n.startsWith("nov") -> 11
+            n.startsWith("dec") -> 12
             else -> null
         }
     }
