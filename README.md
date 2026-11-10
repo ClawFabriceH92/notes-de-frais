@@ -138,7 +138,10 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   l'accueil, section « Photos à joindre ») : la pièce part en PDF avec l'envoi,
   sans créer de dépense ni de projet, et « Ajouter la page 2 » complète la même
   pièce. Les photos prises ainsi sont effacées une fois le mail remis à la
-  messagerie. L'adresse visée est rappelée sur la
+  messagerie. Depuis la v1.22.1, **dès qu'une photo est jointe, seules ces photos
+  partent** : le choix « Toute la société / Un projet » disparaît, puisque la
+  fenêtre sert alors à envoyer un ou deux justificatifs précis, pas le solde de
+  la société. L'adresse visée est rappelée sur la
   fiche du projet (« PDF → … ») et sous chaque société dans le paramétrage. Une
   photo est convertie en PDF avec son nom de fichier en haut de page, un PDF est
   joint tel quel ; les noms restent ceux du ZIP (`…_JustifN`).

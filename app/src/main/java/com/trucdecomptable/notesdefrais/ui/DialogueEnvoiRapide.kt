@@ -171,38 +171,53 @@ fun DialogueEnvoiRapide(
                     TextButton(onClick = onPrendrePhoto) { Text("Prendre une photo") }
                 }
 
-                Text("Quoi envoyer", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = projetChoisi == null,
-                        onClick = { projetChoisi = null },
-                        label = { Text("Toute la société") },
+                // Avec des photos jointes, l'envoi ne porte QUE sur elles : c'est
+                // un justificatif (ou quelques-uns) qu'on envoie, pas le solde de
+                // la société. Le choix de portée n'aurait donc aucun sens ici.
+                if (pieces.isNotEmpty()) {
+                    Text(
+                        "Seules ces photos partent : les justificatifs déjà enregistrés " +
+                            "dans la société ne sont pas joints.",
+                        style = MaterialTheme.typography.bodySmall,
                     )
-                    if (projetsDeLaSociete.isNotEmpty()) {
+                } else {
+                    Text(
+                        "Quoi envoyer",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
-                            selected = projetChoisi != null,
-                            onClick = { projetChoisi = projetChoisi ?: projetsDeLaSociete.first() },
-                            label = { Text("Un projet") },
+                            selected = projetChoisi == null,
+                            onClick = { projetChoisi = null },
+                            label = { Text("Toute la société") },
                         )
-                    }
-                }
-                if (projetsDeLaSociete.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        projetsDeLaSociete.forEach { projet ->
+                        if (projetsDeLaSociete.isNotEmpty()) {
                             FilterChip(
-                                selected = projetChoisi?.id == projet.id,
-                                onClick = { projetChoisi = projet },
-                                label = { Text(projet.nom) },
+                                selected = projetChoisi != null,
+                                onClick = { projetChoisi = projetChoisi ?: projetsDeLaSociete.first() },
+                                label = { Text("Un projet") },
                             )
                         }
                     }
-                } else {
-                    Text(
-                        "Aucun projet : l'envoi couvrira tous les justificatifs de " +
-                            (societe?.nom ?: nomProfil) + ".",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
+                    if (projetsDeLaSociete.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            projetsDeLaSociete.forEach { projet ->
+                                FilterChip(
+                                    selected = projetChoisi?.id == projet.id,
+                                    onClick = { projetChoisi = projet },
+                                    label = { Text(projet.nom) },
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            "Aucun projet : l'envoi couvrira tous les justificatifs de " +
+                                (societe?.nom ?: nomProfil) + ".",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
                 }
             }
         },

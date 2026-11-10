@@ -343,14 +343,17 @@ private fun RacineContenu(
             vm.signaler("Adresse d'envoi invalide : rien n'a été envoyé.")
             return
         }
-        val depenses = if (projetChoisi != null) {
+        // Des photos viennent d'être prises : elles SEULES partent (un
+        // justificatif, ou deux), et la portée choisie dans la fenêtre est sans
+        // objet. Sinon on envoie les justificatifs du projet ou de la société.
+        val photos = vm.photosEnvoi.value
+        val depenses = if (photos.isNotEmpty()) {
+            emptyList()
+        } else if (projetChoisi != null) {
             vm.depensesDuProjet(projetChoisi.id)
         } else {
             vm.depensesDuProfil(profil.id)
         }
-        // Les photos prises depuis la fenêtre d'envoi : elles n'appartiennent à
-        // aucun projet et partent quand même, avec le reste s'il y en a.
-        val photos = vm.photosEnvoi.value
         if (depenses.isEmpty() && photos.isEmpty()) {
             val ou = projetChoisi?.let { "le projet ${it.nom}" } ?: profil.nom
             vm.signaler("Aucun justificatif à envoyer pour $ou : prends une photo.")
