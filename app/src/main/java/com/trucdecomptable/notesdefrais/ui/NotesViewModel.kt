@@ -843,12 +843,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
      * or date opens a form; anything else is saved straight away and can be
      * corrected from the list.
      */
-    fun traiterJustificatif(uri: Uri) {
+    fun traiterJustificatif(uri: Uri, plusieursPages: Boolean = false) {
         if (_projet.value == null) {
             _message.value = "Ouvre d'abord un projet"
             return
         }
-        viewModelScope.launch { enregistrerJustificatif(uri) }
+        viewModelScope.launch { enregistrerJustificatif(uri, plusieursPages) }
     }
 
     /**
@@ -928,7 +928,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { liste.forEach { enregistrerJustificatif(it) } }
     }
 
-    private suspend fun enregistrerJustificatif(uri: Uri) {
+    private suspend fun enregistrerJustificatif(uri: Uri, plusieursPages: Boolean = false) {
         val projet = _projet.value ?: return
         _traitement.value = true
         try {
@@ -983,9 +983,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val id = dao.ajouterDepense(avecTaux)
                 _derniere.value = avecTaux.copy(id = id)
-                // La prise de vue reste ouverte sur cette dépense : les photos
-                // suivantes seront les pages 2, 3… du même justificatif.
-                _capture.value = Capture(id, 1)
+                // Prise de vue « plusieurs pages » : la dépense reste ouverte,
+                // les photos suivantes seront les pages 2, 3… du même
+                // justificatif. Sinon la prise de vue est terminée d'office.
+                _capture.value = if (plusieursPages) Capture(id, 1) else null
                 val devise = if (avecTaux.tauxChange == null && avecTaux.devise != "EUR") " · taux BdF absent" else ""
                 val avertissement = avertissements(avecTaux.copy(id = id))
                 _message.value = avertissement

@@ -182,6 +182,11 @@ private fun RacineContenu(
     // Dépense qui reçoit la photo quand on en est aux pages 2, 3… d'un
     // justificatif ; null quand la photo crée une nouvelle dépense.
     var ciblePhoto by remember { mutableStateOf<Long?>(null) }
+    // La photo en cours servira-t-elle un justificatif de plusieurs pages ?
+    // La question est posée au moment de prendre la photo, pas après.
+    var plusieursPages by remember { mutableStateOf(false) }
+    // Fenêtre « une page ou plusieurs pages », ouverte par « Prendre une photo ».
+    var choixPages by remember { mutableStateOf(false) }
     var reglages by remember { mutableStateOf(false) }
     // Envoi rapide : la fenêtre s'ouvre depuis l'icône e-mail de l'accueil.
     var dialogueMailto by remember { mutableStateOf(false) }
@@ -198,11 +203,17 @@ private fun RacineContenu(
     ) { reussi ->
         val uri = uriPhoto
         val cible = ciblePhoto
+        val plusieurs = plusieursPages
         ciblePhoto = null
+        plusieursPages = false
         // Une photo prise pendant la prise de vue en cours devient une page du
         // justificatif déjà enregistré, au lieu d'une dépense de plus.
         if (reussi && uri != null) {
-            if (cible != null) vm.ajouterPageJustificatif(cible, uri) else vm.traiterJustificatif(uri)
+            if (cible != null) {
+                vm.ajouterPageJustificatif(cible, uri)
+            } else {
+                vm.traiterJustificatif(uri, plusieursPages = plusieurs)
+            }
         }
     }
 
@@ -229,12 +240,13 @@ private fun RacineContenu(
         onPartagesLus()
     }
 
-    fun prendrePhoto(pourDepense: Long? = null) {
+    fun prendrePhoto(pourDepense: Long? = null, plusieurs: Boolean = false) {
         val dossier = File(context.cacheDir, "photos").apply { mkdirs() }
         val fichier = File(dossier, "photo-${System.currentTimeMillis()}.jpg")
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", fichier)
         uriPhoto = uri
         ciblePhoto = pourDepense
+        plusieursPages = plusieurs
         launcherPhoto.launch(uri)
     }
 
@@ -376,6 +388,22 @@ private fun RacineContenu(
         if (resultat == SnackbarResult.ActionPerformed) derniere?.let(vm::editer)
         vm.messageLu()
         vm.derniereOubliee()
+    }
+
+    // « Prendre une photo » demande d'abord si le justificatif tient sur une
+    // page ou sur plusieurs : la réponse décide si la prise de vue reste ouverte.
+    if (choixPages) {
+        DialogueChoixPages(
+            onUnePage = {
+                choixPages = false
+                prendrePhoto(plusieurs = false)
+            },
+            onPlusieursPages = {
+                choixPages = false
+                prendrePhoto(plusieurs = true)
+            },
+            onAnnuler = { choixPages = false },
+        )
     }
 
     // Fenêtre d'envoi rapide : société, adresse modifiable et portée au choix.
@@ -539,7 +567,7 @@ private fun RacineContenu(
                     corbeilleOuverte = false
                     vm.fermerProjet()
                 },
-                onPhoto = { prendrePhoto() },
+                onPhoto = { choixPages = true },
                 onGalerie = { launcherGalerie.launch(arrayOf("image/*", "application/pdf")) },
                 onManuel = vm::ajouterManuellement,
                 onExport = vm::exporter,

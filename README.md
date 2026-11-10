@@ -39,12 +39,16 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   **partage depuis une autre app** (mail, galerie, boutique) : le fichier arrive
   directement dans le projet ouvert, et attend le choix d'un projet si aucun
   n'est ouvert. Plusieurs fichiers partagés d'un coup sont acceptés.
-- **Justificatif de plusieurs pages** (v1.21.0) : après une photo, un bandeau
-  « Justificatif en cours » garde la dépense ouverte ; le bouton
-  « Ajouter la page 2 » (puis 3, 4…) enchaîne les vues de la même pièce (facture sur deux feuilles, ticket
-  plus facture, note d'hôtel et son annexe) au lieu de créer une dépense de plus.
-  « Terminer » referme la prise de vue. Depuis la fiche d'une dépense, les mêmes
-  boutons ajoutent une page à la caméra ou un fichier. À l'export, **toutes les
+- **Justificatif de plusieurs pages** (v1.21.0, question posée avant la photo
+  depuis la v1.21.2) : « Prendre une photo » demande d'abord **une seule page ou
+  plusieurs pages**. Une seule page : la dépense est créée et la prise de vue
+  refermée, comme avant. Plusieurs pages : la première photo crée la dépense, un
+  bandeau « Justificatif en cours » la garde ouverte et le bouton
+  « Ajouter la page 2 » (puis 3, 4…) enchaîne les vues de la même pièce (facture
+  sur deux feuilles, ticket plus facture, note d'hôtel et son annexe) au lieu de
+  créer une dépense de plus. « Terminer » referme la prise de vue. Depuis la
+  fiche d'une dépense, les mêmes boutons ajoutent une page à la caméra ou un
+  fichier. À l'export, **toutes les
   pages d'un justificatif sont réunies dans un seul PDF** (`…_JustifN.pdf`,
   pages numérotées dans l'en-tête) : le ZIP comme l'envoi PDF contiennent donc
   un fichier par justificatif, plus jamais d'annexe séparée.
