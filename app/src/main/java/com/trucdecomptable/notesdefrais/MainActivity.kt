@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.IntentCompat
+import com.trucdecomptable.notesdefrais.backup.Sauvegarde
 import com.trucdecomptable.notesdefrais.ui.NotesTheme
 import com.trucdecomptable.notesdefrais.ui.Racine
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +24,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Avant toute ouverture de la base : défait une restauration que la mort
+        // du processus aurait interrompue à mi-bascule (sans effet sinon).
+        Sauvegarde.recupererApresInterruption(applicationContext)
         enableEdgeToEdge()
         partages.value = urisPartagees(intent)
         setContent {

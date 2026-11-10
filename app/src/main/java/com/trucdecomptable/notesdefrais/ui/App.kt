@@ -20,6 +20,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,10 +34,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.trucdecomptable.notesdefrais.backup.RedemarrageProcessus
 import com.trucdecomptable.notesdefrais.data.Depense
+import com.trucdecomptable.notesdefrais.data.Profil
 import com.trucdecomptable.notesdefrais.data.Projet
 import com.trucdecomptable.notesdefrais.export.EnvoiMailto
 import com.trucdecomptable.notesdefrais.export.ExportManager
@@ -48,12 +52,95 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 
-/** Whole app: projects, project detail, settings, dialogs and the update prompt. */
+/**
+ * Point d'entrée. Une fois une restauration terminée (ou annulée après la
+ * fermeture de la base), plus aucun écran n'est composé : seul reste le
+ * dialogue bloquant, qui relance le processus. Le contenu quitte la
+ * composition, donc ses flux Room ne sont plus collectés sur la base fermée.
+ */
 @Composable
 fun Racine(
     partages: StateFlow<List<Uri>> = MutableStateFlow(emptyList()),
     onPartagesLus: () -> Unit = {},
     vm: NotesViewModel = viewModel(),
+) {
+    val fin by vm.finRestauration.collectAsStateWithLifecycle()
+    val finCourante = fin
+    if (finCourante != null) {
+        EcranFinRestauration(finCourante)
+    } else {
+        RacineContenu(partages, onPartagesLus, vm)
+    }
+}
+
+/** Dialogue bloquant : on ne peut ni le fermer ni retourner dans l'application. */
+@Composable
+private fun EcranFinRestauration(fin: NotesViewModel.FinRestauration) {
+    val context = LocalContext.current
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {}
+    AlertDialog(
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+        title = { Text(fin.titre) },
+        text = { Text(fin.message, modifier = Modifier.verticalScroll(rememberScrollState())) },
+        confirmButton = {
+            TextButton(onClick = { RedemarrageProcessus.relancer(context) }) {
+                Text("Redémarrer l'application")
+            }
+        },
+    )
+}
+
+/** Confirmation explicite avant toute restauration : contenu de l'archive et ce qui sera écrasé. */
+@Composable
+private fun DialogueConfirmationRestauration(
+    demande: NotesViewModel.ConfirmationRestauration,
+    onConfirmer: () -> Unit,
+    onAnnuler: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onAnnuler,
+        title = { Text("Restaurer cette sauvegarde ?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                demande.apercu.lignes.forEachIndexed { rang, ligne ->
+                    Text(ligne, modifier = Modifier.padding(top = if (rang == 0) 0.dp else 8.dp))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onConfirmer) { Text("Restaurer") } },
+        dismissButton = { TextButton(onClick = onAnnuler) { Text("Annuler") } },
+    )
+}
+
+/** Progression de la restauration : bloquant, sans bouton. */
+@Composable
+private fun DialogueRestaurationEnCours(etape: String) {
+    AlertDialog(
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+        title = { Text("Restauration en cours") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                Text(etape)
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 16.dp))
+                Text(
+                    "Ne quittez pas l'application.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            }
+        },
+        confirmButton = {},
+    )
+}
+
+/** Whole app: projects, project detail, settings, dialogs and the update prompt. */
+@Composable
+private fun RacineContenu(
+    partages: StateFlow<List<Uri>>,
+    onPartagesLus: () -> Unit,
+    vm: NotesViewModel,
 ) {
     val context = LocalContext.current
 
@@ -82,6 +169,7 @@ fun Racine(
     val corbeille by vm.corbeille.collectAsStateWithLifecycle()
     val nbCorbeille by vm.nbCorbeille.collectAsStateWithLifecycle()
     val remplacementTicket by vm.remplacementTicket.collectAsStateWithLifecycle()
+    val capture by vm.capture.collectAsStateWithLifecycle()
 
     // Moyens de paiement proposés : les communs, plus ceux de la société en cours.
     val moyensPaiement = remember(parametres.moyensPaiement, profilActif) {
@@ -91,6 +179,9 @@ fun Racine(
     val snackbar = remember { SnackbarHostState() }
     val portee = rememberCoroutineScope()
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
+    // Dépense qui reçoit la photo quand on en est aux pages 2, 3… d'un
+    // justificatif ; null quand la photo crée une nouvelle dépense.
+    var ciblePhoto by remember { mutableStateOf<Long?>(null) }
     var reglages by remember { mutableStateOf(false) }
     // Envoi rapide : la fenêtre s'ouvre depuis l'icône e-mail de l'accueil.
     var dialogueMailto by remember { mutableStateOf(false) }
@@ -104,7 +195,16 @@ fun Racine(
 
     val launcherPhoto = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture(),
-    ) { reussi -> if (reussi) uriPhoto?.let(vm::traiterJustificatif) }
+    ) { reussi ->
+        val uri = uriPhoto
+        val cible = ciblePhoto
+        ciblePhoto = null
+        // Une photo prise pendant la prise de vue en cours devient une page du
+        // justificatif déjà enregistré, au lieu d'une dépense de plus.
+        if (reussi && uri != null) {
+            if (cible != null) vm.ajouterPageJustificatif(cible, uri) else vm.traiterJustificatif(uri)
+        }
+    }
 
     val launcherGalerie = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -112,7 +212,7 @@ fun Racine(
 
     val launcherRestauration = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
-    ) { uri -> uri?.let(vm::restaurer) }
+    ) { uri -> uri?.let(vm::demanderRestauration) }
 
     val launcherParametres = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -129,11 +229,12 @@ fun Racine(
         onPartagesLus()
     }
 
-    fun prendrePhoto() {
+    fun prendrePhoto(pourDepense: Long? = null) {
         val dossier = File(context.cacheDir, "photos").apply { mkdirs() }
         val fichier = File(dossier, "photo-${System.currentTimeMillis()}.jpg")
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", fichier)
         uriPhoto = uri
+        ciblePhoto = pourDepense
         launcherPhoto.launch(uri)
     }
 
@@ -202,17 +303,26 @@ fun Racine(
     }
 
     /**
-     * Envoi rapide (icône e-mail de l'accueil) : rassemble les justificatifs du
-     * profil courant, les met en PDF et ouvre le mail prérempli vers l'adresse
-     * « mailto » du profil. Aucune note de frais à remplir, aucun projet à créer.
+     * Envoi rapide (icône e-mail de l'accueil) : rassemble les justificatifs de
+     * la société choisie, les met en PDF et ouvre le mail prérempli vers
+     * l'adresse « mailto » de cette société. Aucune note de frais à remplir,
+     * aucun projet à créer.
      */
-    suspend fun envoyerMailtoRapide(adresseDemandee: String, projetChoisi: Projet?) {
-        val profil = profilActif
+    suspend fun envoyerMailtoRapide(
+        adresseDemandee: String,
+        profilChoisi: Profil?,
+        projetChoisi: Projet?,
+    ) {
+        // La société choisie dans la fenêtre fait foi ; à défaut celle du projet,
+        // puis celle en cours de travail.
+        val profil = profilChoisi
+            ?: projetChoisi?.profilId?.takeIf { it > 0L }?.let { id -> profils.firstOrNull { it.id == id } }
+            ?: profilActif
         if (profil == null) {
             vm.signaler("Choisis d'abord une société : l'adresse d'envoi y est rattachée.")
             return
         }
-        val adresse = adresseDemandee.trim().ifBlank { profil.emailMailto.trim() }
+        val adresse = adresseDemandee.trim().ifBlank { profil.adresseEnvoi }
         if (!EnvoiMailto.adresseValide(adresse)) {
             vm.signaler("Adresse d'envoi invalide : rien n'a été envoyé.")
             return
@@ -268,17 +378,18 @@ fun Racine(
         vm.derniereOubliee()
     }
 
-    // Fenêtre d'envoi rapide : adresse modifiable et portée au choix.
+    // Fenêtre d'envoi rapide : société, adresse modifiable et portée au choix.
     if (dialogueMailto) {
-        val projetsDuProfil = projets
         DialogueEnvoiRapide(
             nomProfil = profilActif?.nom.orEmpty().ifBlank { "la société en cours" },
-            projets = projetsDuProfil,
-            adresseInitiale = profilActif?.emailMailto.orEmpty(),
+            profils = profils,
+            projets = tousProjets,
+            profilInitial = profilActif,
+            adresseInitiale = profilActif?.adresseEnvoi.orEmpty(),
             onFermer = { dialogueMailto = false },
-            onEnvoyer = { adresse, projetChoisi ->
+            onEnvoyer = { adresse, societe, projetChoisi ->
                 dialogueMailto = false
-                portee.launch { envoyerMailtoRapide(adresse, projetChoisi) }
+                portee.launch { envoyerMailtoRapide(adresse, societe, projetChoisi) }
             },
         )
     }
@@ -320,6 +431,18 @@ fun Racine(
         )
         vm.sauvegardeConsommee()
     }
+
+    // Restauration : confirmation explicite, puis progression bloquante.
+    val confirmationRestauration by vm.confirmationRestauration.collectAsStateWithLifecycle()
+    val restaurationEnCours by vm.restaurationEnCours.collectAsStateWithLifecycle()
+    confirmationRestauration?.let { demande ->
+        DialogueConfirmationRestauration(
+            demande = demande,
+            onConfirmer = vm::confirmerRestauration,
+            onAnnuler = vm::annulerRestauration,
+        )
+    }
+    restaurationEnCours?.let { DialogueRestaurationEnCours(it) }
 
     // Paramétrage et sociétés seuls : un JSON, sans les dépenses.
     val fichierParametres by vm.fichierParametres.collectAsStateWithLifecycle()
@@ -416,7 +539,7 @@ fun Racine(
                     corbeilleOuverte = false
                     vm.fermerProjet()
                 },
-                onPhoto = ::prendrePhoto,
+                onPhoto = { prendrePhoto() },
                 onGalerie = { launcherGalerie.launch(arrayOf("image/*", "application/pdf")) },
                 onManuel = vm::ajouterManuellement,
                 onExport = vm::exporter,
@@ -440,6 +563,9 @@ fun Racine(
                     ?: parametres.societe.takeIf { it.isNotBlank() },
                 onCorbeille = { corbeilleOuverte = true },
                 nbCorbeille = nbCorbeille,
+                capture = capture,
+                onAjouterPage = { capture?.let { prendrePhoto(it.depenseId) } },
+                onTerminerCapture = vm::terminerCapture,
             )
         }
 

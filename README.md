@@ -39,6 +39,15 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   **partage depuis une autre app** (mail, galerie, boutique) : le fichier arrive
   directement dans le projet ouvert, et attend le choix d'un projet si aucun
   n'est ouvert. Plusieurs fichiers partagés d'un coup sont acceptés.
+- **Justificatif de plusieurs pages** (v1.21.0) : après une photo, un bandeau
+  « Justificatif en cours » garde la dépense ouverte ; « Ajouter une page
+  (photo) » enchaîne les vues de la même pièce (facture sur deux feuilles, ticket
+  plus facture, note d'hôtel et son annexe) au lieu de créer une dépense de plus.
+  « Terminer » referme la prise de vue. Depuis la fiche d'une dépense, les mêmes
+  boutons ajoutent une page à la caméra ou un fichier. À l'export, **toutes les
+  pages d'un justificatif sont réunies dans un seul PDF** (`…_JustifN.pdf`,
+  pages numérotées dans l'en-tête) : le ZIP comme l'envoi PDF contiennent donc
+  un fichier par justificatif, plus jamais d'annexe séparée.
 - **Extraction 100 % locale** (ML Kit, hors ligne, aucune donnée envoyée) :
   date, montant TTC, type de dépense, taux de TVA, devise. Un PDF est rendu page
   par page (3 pages au plus) avant lecture, puisque le moteur ne lit que des
@@ -117,7 +126,10 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   la v1.10.0) : depuis un projet, le bouton de
   partage propose soit le ZIP complet, soit **les justificatifs seuls en PDF**,
   sans ZIP ni classeur Excel, adressés à l'email du profil du projet (celui du
-  paramétrage si la société n'en a pas). L'adresse visée est rappelée sur la
+  paramétrage si la société n'en a pas). L'envoi rapide (icône e-mail de
+  l'accueil) demande d'abord **la société** : chacune a son adresse, la choisir
+  remplit le champ « À » et restreint les projets proposés à ceux de cette
+  société ; l'adresse reste modifiable pour un envoi ponctuel. L'adresse visée est rappelée sur la
   fiche du projet (« PDF → … ») et sous chaque société dans le paramétrage. Une
   photo est convertie en PDF avec son nom de fichier en haut de page, un PDF est
   joint tel quel ; les noms restent ceux du ZIP (`…_JustifN`).

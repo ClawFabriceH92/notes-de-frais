@@ -119,6 +119,27 @@ fun DialogueDepense(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let { onAjouterPiece?.invoke(it) } }
 
+    // Photographier une page de plus pour ce justificatif (facture sur deux
+    // feuilles, verso du ticket) : la photo suit le même chemin que la pièce
+    // principale, stockage et recadrage compris, et rejoint ses pièces.
+    val contextePhoto = androidx.compose.ui.platform.LocalContext.current
+    var uriPage by remember { mutableStateOf<android.net.Uri?>(null) }
+    val launcherPhotoPage = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.TakePicture(),
+    ) { reussi -> if (reussi) uriPage?.let { onAjouterPiece?.invoke(it) } }
+
+    fun prendrePhotoPage() {
+        val dossier = java.io.File(contextePhoto.cacheDir, "photos").apply { mkdirs() }
+        val fichier = java.io.File(dossier, "page-${System.currentTimeMillis()}.jpg")
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            contextePhoto,
+            "${contextePhoto.packageName}.fileprovider",
+            fichier,
+        )
+        uriPage = uri
+        launcherPhotoPage.launch(uri)
+    }
+
     val launcherFacture = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let { onAjouterFacture?.invoke(it) } }
@@ -518,11 +539,19 @@ fun DialogueDepense(
                 }
 
                 if (initiale.id != 0L && onAjouterPiece != null) {
-                    TextButton(onClick = { launcherPiece.launch(arrayOf("image/*", "application/pdf")) }) {
-                        Text(
-                            "Ajouter une pièce jointe" +
-                                if (initiale.tousLesFichiers.size > 1) " (${initiale.tousLesFichiers.size} déjà jointes)" else "",
-                        )
+                    // Un justificatif tient parfois en plusieurs pages : la même
+                    // dépense les porte toutes, et l'export les réunit en un PDF.
+                    Text(
+                        if (pieces.size > 1) "Justificatif de ${pieces.size} pages" else "Justificatif d'une page",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { prendrePhotoPage() }) {
+                            Text(if (pieces.isEmpty()) "Prendre une photo" else "Ajouter une page (photo)")
+                        }
+                        TextButton(onClick = { launcherPiece.launch(arrayOf("image/*", "application/pdf")) }) {
+                            Text("Ajouter un fichier (photo ou PDF)")
+                        }
                     }
                 }
 

@@ -89,15 +89,11 @@ object ExportManager {
             if (presents.isEmpty()) return@map Justificatif(depense, 0, emptyList())
             val base = nomJustificatif(slug, depense).removeSuffix(".pdf")
             val numeroJustif = numero + 1
-            val noms = presents.mapIndexed { rang, _ ->
-                // Second and later attachments are named _annexe2, _annexe3…
-                val suffixe = if (rang == 0) {
-                    "_Justif$numeroJustif"
-                } else {
-                    "_Justif${numeroJustif}_annexe${rang + 1}"
-                }
-                unique("$base$suffixe.pdf", pris)
-            }
+            // Toutes les pages d'un même justificatif (ticket + facture, ou les
+            // deux feuilles d'une facture photographiées l'une après l'autre)
+            // tiennent dans UN seul PDF : un justificatif = un fichier, que la
+            // comptabilité n'a pas à recoller.
+            val noms = listOf(unique("$base" + "_Justif$numeroJustif.pdf", pris))
             Justificatif(depense, ++numero, noms)
         }
     }
@@ -165,15 +161,9 @@ object ExportManager {
                 val sources = justificatif.depense.tousLesFichiers
                     .map { File(dossierPieces, it) }
                     .filter { it.exists() }
-                justificatif.noms.forEachIndexed { rang, nom ->
-                    val source = sources.getOrNull(rang) ?: return@forEachIndexed
-                    val sortie = File(dossier, nom)
-                    if (estPdf(source)) {
-                        source.copyTo(sortie, overwrite = true)
-                    } else {
-                        imageVersPdf(source, sortie, enteteJustificatif(nom))
-                    }
-                }
+                // Un justificatif = un PDF, ses pages à la suite.
+                val nom = justificatif.noms.first()
+                pagesVersPdf(sources, File(dossier, nom), enteteJustificatif(nom))
             }
             dossier.listFiles().orEmpty()
                 .filter { it.isFile && it.length() > 0L }
@@ -324,19 +314,17 @@ object ExportManager {
                 val sources = justificatif.depense.tousLesFichiers
                     .map { File(dossierPieces, it) }
                     .filter { it.exists() }
-                justificatif.noms.forEachIndexed { rang, nom ->
-                    val source = sources.getOrNull(rang) ?: return@forEachIndexed
-                    zip.putNextEntry(ZipEntry(nom))
-                    if (estPdf(source)) {
-                        source.inputStream().use { it.copyTo(zip) }
-                    } else {
-                        val pdf = File(context.cacheDir, "tmp-${justificatif.depense.id}-$rang.pdf")
-                        imageVersPdf(source, pdf, enteteJustificatif(nom))
-                        pdf.inputStream().use { it.copyTo(zip) }
-                        pdf.delete()
-                    }
-                    zip.closeEntry()
+                val nom = justificatif.noms.first()
+                zip.putNextEntry(ZipEntry(nom))
+                if (sources.size == 1 && estPdf(sources.first())) {
+                    sources.first().inputStream().use { it.copyTo(zip) }
+                } else {
+                    val pdf = File(context.cacheDir, "tmp-justif-${justificatif.depense.id}.pdf")
+                    pagesVersPdf(sources, pdf, enteteJustificatif(nom))
+                    pdf.inputStream().use { it.copyTo(zip) }
+                    pdf.delete()
                 }
+                zip.closeEntry()
             }
         }
     }
@@ -359,52 +347,155 @@ object ExportManager {
         }
     }.getOrDefault(false)
 
-    /** Wraps a receipt photo in an A4 PDF, keeping the whole image visible. */
-    fun imageVersPdf(image: File, sortie: File, entete: String = "") {
-        val bitmap = BitmapFactory.decodeFile(image.absolutePath) ?: return
+    /** Format A4 des justificatifs, en points (72 dpi). */
+    private const val LARGEUR_A4 = 595
+    private const val HAUTEUR_A4 = 842
+    private const val MARGE_A4 = 24f
+
+    /**
+     * Écrit un justificatif en PDF, **toutes ses pages dans le même fichier**.
+     *
+     * Un justificatif tient parfois en plusieurs prises de vue : une facture
+     * imprimée sur deux feuilles, un ticket plus sa facture, un devis qui suit
+     * la note d'hôtel. Les réunir dans un seul PDF évite à la comptabilité de
+     * recoller les morceaux et de se demander si la page 2 appartient bien à la
+     * même dépense.
+     *
+     * Un PDF déjà fourni est recopié tel quel quand il est seul (aucune perte,
+     * texte conservé) ; sinon ses pages sont rendues en images pour entrer dans
+     * le document commun, faute de pouvoir fusionner deux PDF sans bibliothèque
+     * supplémentaire.
+     */
+    fun pagesVersPdf(sources: List<File>, sortie: File, entete: String = "") {
+        val pages = sources.filter { it.exists() && it.length() > 0L }
+        if (pages.isEmpty()) return
+        if (pages.size == 1 && estPdf(pages[0])) {
+            pages[0].copyTo(sortie, overwrite = true)
+            return
+        }
         val document = PdfDocument()
+        var numero = 0
         try {
-            val largeur = 595
-            val hauteur = 842
-            val marge = 24f
-            val page = document.startPage(PdfDocument.PageInfo.Builder(largeur, hauteur, 1).create())
-            val canvas = page.canvas
-            canvas.drawColor(Color.WHITE)
-
-            // Le nom du fichier en haut de page : une fois la pièce imprimée ou
-            // sortie du ZIP, elle reste identifiable sans son nom de fichier.
-            var hautUtile = marge
-            if (entete.isNotBlank()) {
-                val encre = Paint(Paint.ANTI_ALIAS_FLAG)
-                encre.color = Color.DKGRAY
-                encre.textSize = 9f
-                canvas.drawText(entete, marge, marge + 9f, encre)
-                // Filet de séparation, pour que l'en-tête ne se confonde pas
-                // avec le haut du ticket photographié.
-                val trait = Paint().apply { color = Color.LTGRAY; strokeWidth = 0.5f }
-                canvas.drawLine(marge, marge + 14f, largeur - marge, marge + 14f, trait)
-                hautUtile = marge + 22f
+            for (source in pages) {
+                if (estPdf(source)) {
+                    rendrePdf(source) { bitmap ->
+                        numero++
+                        ajouterPageImage(document, bitmap, entete, numero)
+                    }
+                } else {
+                    val bitmap = BitmapFactory.decodeFile(source.absolutePath) ?: continue
+                    try {
+                        numero++
+                        ajouterPageImage(document, bitmap, entete, numero)
+                    } finally {
+                        bitmap.recycle()
+                    }
+                }
             }
-
-            val dispoLargeur = largeur - 2 * marge
-            val dispoHauteur = hauteur - hautUtile - marge
-            val echelle = minOf(dispoLargeur / bitmap.width, dispoHauteur / bitmap.height, 3f)
-            val dessineLargeur = bitmap.width * echelle
-            val dessineHauteur = bitmap.height * echelle
-            val gauche = (largeur - dessineLargeur) / 2f
-            val haut = hautUtile + (dispoHauteur - dessineHauteur) / 2f
-            canvas.drawBitmap(
-                bitmap,
-                null,
-                android.graphics.RectF(gauche, haut, gauche + dessineLargeur, haut + dessineHauteur),
-                Paint(Paint.FILTER_BITMAP_FLAG),
-            )
-            document.finishPage(page)
-            FileOutputStream(sortie).use { document.writeTo(it) }
+            if (numero > 0) FileOutputStream(sortie).use { document.writeTo(it) }
         } finally {
             document.close()
-            bitmap.recycle()
         }
+    }
+
+    /** Wraps a receipt photo in a single-page A4 PDF, whole image visible. */
+    fun imageVersPdf(image: File, sortie: File, entete: String = "") {
+        pagesVersPdf(listOf(image), sortie, entete)
+    }
+
+    /**
+     * Rend chaque page d'un PDF source en image et la passe à [surPage] : c'est
+     * le seul moyen d'insérer un PDF existant dans un document PdfDocument.
+     */
+    private fun rendrePdf(fichier: File, surPage: (android.graphics.Bitmap) -> Unit) {
+        val descripteur = runCatching {
+            android.os.ParcelFileDescriptor.open(
+                fichier,
+                android.os.ParcelFileDescriptor.MODE_READ_ONLY,
+            )
+        }.getOrNull() ?: return
+        try {
+            android.graphics.pdf.PdfRenderer(descripteur).use { moteur ->
+                for (index in 0 until moteur.pageCount) {
+                    moteur.openPage(index).use { page ->
+                        val echelle = (1600f / page.width.toFloat()).coerceIn(0.5f, 3f)
+                        val bitmap = android.graphics.Bitmap.createBitmap(
+                            (page.width * echelle).toInt().coerceAtLeast(1),
+                            (page.height * echelle).toInt().coerceAtLeast(1),
+                            android.graphics.Bitmap.Config.ARGB_8888,
+                        )
+                        // PdfRenderer laisse les zones non peintes transparentes.
+                        android.graphics.Canvas(bitmap).drawColor(Color.WHITE)
+                        page.render(
+                            bitmap,
+                            null,
+                            null,
+                            android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY,
+                        )
+                        try {
+                            surPage(bitmap)
+                        } finally {
+                            bitmap.recycle()
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Une page illisible ne doit pas faire perdre les autres.
+        } finally {
+            runCatching { descripteur.close() }
+        }
+    }
+
+    /** Ajoute une image en page A4 du justificatif, en-tête en haut de page. */
+    private fun ajouterPageImage(
+        document: PdfDocument,
+        bitmap: android.graphics.Bitmap,
+        entete: String,
+        numero: Int,
+    ) {
+        val page = document.startPage(
+            PdfDocument.PageInfo.Builder(LARGEUR_A4, HAUTEUR_A4, numero).create(),
+        )
+        val canvas = page.canvas
+        canvas.drawColor(Color.WHITE)
+
+        // Le nom du fichier en haut de page : une fois la pièce imprimée ou
+        // sortie du ZIP, elle reste identifiable sans son nom de fichier. Les
+        // pages suivantes portent le même nom avec leur rang, pour qu'une page
+        // égarée se rattache à son justificatif.
+        val titre = when {
+            entete.isBlank() -> ""
+            numero <= 1 -> entete
+            else -> "$entete (page $numero)"
+        }
+        var hautUtile = MARGE_A4
+        if (titre.isNotBlank()) {
+            val encre = Paint(Paint.ANTI_ALIAS_FLAG)
+            encre.color = Color.DKGRAY
+            encre.textSize = 9f
+            canvas.drawText(titre, MARGE_A4, MARGE_A4 + 9f, encre)
+            // Filet de séparation, pour que l'en-tête ne se confonde pas avec le
+            // haut du ticket photographié.
+            val trait = Paint().apply { color = Color.LTGRAY; strokeWidth = 0.5f }
+            canvas.drawLine(MARGE_A4, MARGE_A4 + 14f, LARGEUR_A4 - MARGE_A4, MARGE_A4 + 14f, trait)
+            hautUtile = MARGE_A4 + 22f
+        }
+
+        val dispoLargeur = LARGEUR_A4 - 2 * MARGE_A4
+        val dispoHauteur = HAUTEUR_A4 - hautUtile - MARGE_A4
+        val echelle = minOf(dispoLargeur / bitmap.width, dispoHauteur / bitmap.height, 3f)
+        val dessineLargeur = bitmap.width * echelle
+        val dessineHauteur = bitmap.height * echelle
+        val gauche = (LARGEUR_A4 - dessineLargeur) / 2f
+        val haut = hautUtile + (dispoHauteur - dessineHauteur) / 2f
+        canvas.drawBitmap(
+            bitmap,
+            null,
+            android.graphics.RectF(gauche, haut, gauche + dessineLargeur, haut + dessineHauteur),
+            Paint(Paint.FILTER_BITMAP_FLAG),
+        )
+        document.finishPage(page)
     }
 
     /** The recap workbook: one detail sheet, one recap by expense type. */

@@ -49,18 +49,18 @@ class PaiementJustificatifsTest {
     }
 
     @Test
-    fun `les annexes sont nommees et listees`() {
+    fun `les pages d un justificatif tiennent dans un seul PDF`() {
         val depense = hotel(1, "a.jpg", annexes = "b.pdf|feuille-de-route.pdf")
         val plan = ExportManager.planJustificatifs("Mission_Paris", listOf(depense))
 
+        // Ticket + facture + feuille de route : un seul fichier, plusieurs pages
+        // dedans. La comptabilité ne recolle rien et le récap cite ce nom.
         assertEquals(
-            listOf(
-                "Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1.pdf",
-                "Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1_annexe2.pdf",
-                "Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1_annexe3.pdf",
-            ),
+            listOf("Mission_Paris_2026-10-12_hotel_248.50EUR_Justif1.pdf"),
             plan.single().noms,
         )
+        // Les pages restent, dans l'ordre : la pièce principale d'abord.
+        assertEquals(listOf("a.jpg", "b.pdf", "feuille-de-route.pdf"), depense.tousLesFichiers)
     }
 
     @Test

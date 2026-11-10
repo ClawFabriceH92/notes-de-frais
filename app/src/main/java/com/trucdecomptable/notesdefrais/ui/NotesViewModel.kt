@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.trucdecomptable.notesdefrais.backup.RestaurationInterrompue
 import com.trucdecomptable.notesdefrais.backup.Sauvegarde
 import com.trucdecomptable.notesdefrais.data.AnnuaireEntreprises
 import com.trucdecomptable.notesdefrais.data.BaremeKm
@@ -61,6 +62,13 @@ data class Envoi(
     val poids: Long get() = fichiers.sumOf { it.length() }
     val decoupe: Boolean get() = total > 1
 }
+
+/**
+ * Le justificatif en cours de prise de vue : la dépense qui reçoit les pages et
+ * le nombre de pages déjà prises. Sert au bandeau « Ajouter une page » affiché
+ * dans le projet tant que la prise de vue n'est pas terminée.
+ */
+data class Capture(val depenseId: Long, val pages: Int)
 
 /**
  * Une facture vient d'être jointe à une dépense qui a déjà une pièce
@@ -200,16 +208,73 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun restaurer(uri: android.net.Uri) {
+    /**
+     * Restauration d'une sauvegarde, en trois temps et jamais d'un seul geste :
+     * [demanderRestauration] lit l'archive pour la présenter, [confirmerRestauration]
+     * (après l'accord explicite de l'utilisateur) restaure, puis l'écran
+     * [finRestauration] impose le redémarrage du processus : les DAO et les flux
+     * de ce ViewModel visent l'ancienne base, fermée.
+     */
+    data class ConfirmationRestauration(
+        val uri: android.net.Uri,
+        val apercu: Sauvegarde.ApercuRestauration,
+    )
+
+    /** Fin de restauration : le message à lire avant de relancer l'application. */
+    data class FinRestauration(val titre: String, val message: String)
+
+    private val _confirmationRestauration = MutableStateFlow<ConfirmationRestauration?>(null)
+    val confirmationRestauration: StateFlow<ConfirmationRestauration?> = _confirmationRestauration.asStateFlow()
+
+    /** Étape en cours (non nul = dialogue bloquant de progression). */
+    private val _restaurationEnCours = MutableStateFlow<String?>(null)
+    val restaurationEnCours: StateFlow<String?> = _restaurationEnCours.asStateFlow()
+
+    private val _finRestauration = MutableStateFlow<FinRestauration?>(null)
+    val finRestauration: StateFlow<FinRestauration?> = _finRestauration.asStateFlow()
+
+    fun demanderRestauration(uri: android.net.Uri) {
+        if (_restaurationEnCours.value != null || _finRestauration.value != null) return
         viewModelScope.launch {
-            runCatching { Sauvegarde.restaurer(getApplication(), uri) }
+            _restaurationEnCours.value = "Lecture de l'archive…"
+            runCatching { Sauvegarde.inspecter(getApplication(), uri) }
+                .onSuccess { _confirmationRestauration.value = ConfirmationRestauration(uri, it) }
+                .onFailure {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    Diag.record("restauration/apercu", it)
+                    _message.value = "Restauration impossible : ${it.message ?: "erreur"}"
+                }
+            _restaurationEnCours.value = null
+        }
+    }
+
+    fun annulerRestauration() {
+        _confirmationRestauration.value = null
+    }
+
+    fun confirmerRestauration() {
+        val demande = _confirmationRestauration.value ?: return
+        if (_restaurationEnCours.value != null) return
+        _confirmationRestauration.value = null
+        viewModelScope.launch {
+            _restaurationEnCours.value = "Préparation…"
+            runCatching {
+                Sauvegarde.restaurer(getApplication(), demande.uri) { etape -> _restaurationEnCours.value = etape }
+            }
                 .onSuccess {
-                    _message.value = it.message
-                    _parametres.value = parametresStore.lire()
+                    _restaurationEnCours.value = null
+                    _finRestauration.value = FinRestauration("Restauration terminée", it.message)
                 }
                 .onFailure {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
                     Diag.record("restauration", it)
-                    _message.value = "Restauration impossible : ${it.message ?: "erreur"}"
+                    _restaurationEnCours.value = null
+                    if (it is RestaurationInterrompue) {
+                        // Room a été fermée : plus aucun DAO n'est utilisable, même si les fichiers sont revenus.
+                        _finRestauration.value = FinRestauration("Restauration annulée", it.message ?: "Échec de la restauration.")
+                    } else {
+                        _message.value = "Restauration impossible : ${it.message ?: "erreur"}"
+                    }
                 }
         }
     }
@@ -361,6 +426,15 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _derniere = MutableStateFlow<Depense?>(null)
     val derniere: StateFlow<Depense?> = _derniere.asStateFlow()
 
+    /**
+     * Le justificatif en cours de prise de vue. Après une photo, l'app garde la
+     * dépense ouverte comme cible : les vues suivantes (facture sur deux
+     * feuilles, ticket plus facture) s'ajoutent à elle comme autant de pages au
+     * lieu de créer une nouvelle dépense. Null quand la prise de vue est finie.
+     */
+    private val _capture = MutableStateFlow<Capture?>(null)
+    val capture: StateFlow<Capture?> = _capture.asStateFlow()
+
     private val _export = MutableStateFlow<File?>(null)
     val export: StateFlow<File?> = _export.asStateFlow()
 
@@ -477,11 +551,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun ouvrirProjet(projet: Projet) {
+        if (_projet.value?.id != projet.id) _capture.value = null
         _projet.value = projet
         traiterPartagesEnAttente()
     }
 
     fun fermerProjet() {
+        _capture.value = null
         _projet.value = null
     }
 
@@ -775,6 +851,52 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { enregistrerJustificatif(uri) }
     }
 
+    /**
+     * Ajoute une page au justificatif en cours de prise de vue : la deuxième
+     * feuille d'une facture, le verso d'un ticket. La photo rejoint les pièces
+     * de la MÊME dépense au lieu d'en créer une nouvelle, et l'export les
+     * réunira dans un seul PDF.
+     */
+    fun ajouterPageJustificatif(depenseId: Long, uri: Uri) {
+        viewModelScope.launch {
+            _traitement.value = true
+            try {
+                val fichier = withContext(Dispatchers.IO) { ReceiptOcr.stocker(getApplication(), uri) }
+                // Même recadrage que la pièce principale : une page posée sur un
+                // bureau ne garde que la page.
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        ReceiptOcr.lire(
+                            getApplication(),
+                            fichier,
+                            recadrage = _parametres.value.recadrageAuto,
+                        )
+                    }.onFailure { Diag.record("page/recadrage", it) }
+                }
+                val actuelle = withContext(Dispatchers.IO) { dao.depense(depenseId) }
+                if (actuelle == null) {
+                    _message.value = "Dépense introuvable : page non ajoutée"
+                    return@launch
+                }
+                val maj = actuelle.avecPiece(fichier.name)
+                dao.majDepense(maj)
+                _capture.value = Capture(maj.id, maj.tousLesFichiers.size)
+                _edition.value = _edition.value?.takeIf { it.id == maj.id }?.let { maj }
+                _message.value = "Page ${maj.tousLesFichiers.size} ajoutée au justificatif"
+            } catch (e: Exception) {
+                Diag.record("page/ajout", e)
+                _message.value = "Page non ajoutée : ${e.message ?: "erreur"}"
+            } finally {
+                _traitement.value = false
+            }
+        }
+    }
+
+    /** Fin de la prise de vue : la prochaine photo créera une nouvelle dépense. */
+    fun terminerCapture() {
+        _capture.value = null
+    }
+
     /** Files handed over by another app, waiting for a project to land in. */
     private val _partagesEnAttente = MutableStateFlow<List<Uri>>(emptyList())
 
@@ -861,6 +983,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val id = dao.ajouterDepense(avecTaux)
                 _derniere.value = avecTaux.copy(id = id)
+                // La prise de vue reste ouverte sur cette dépense : les photos
+                // suivantes seront les pages 2, 3… du même justificatif.
+                _capture.value = Capture(id, 1)
                 val devise = if (avecTaux.tauxChange == null && avecTaux.devise != "EUR") " · taux BdF absent" else ""
                 val avertissement = avertissements(avecTaux.copy(id = id))
                 _message.value = avertissement

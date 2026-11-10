@@ -441,6 +441,11 @@ fun EcranProjet(
     societe: String? = null,
     onCorbeille: () -> Unit = {},
     nbCorbeille: Int = 0,
+    // Justificatif en cours de prise de vue : les photos suivantes s'ajoutent
+    // comme pages au lieu de créer une dépense de plus.
+    capture: Capture? = null,
+    onAjouterPage: () -> Unit = {},
+    onTerminerCapture: () -> Unit = {},
 ) {
     var menuAjout by remember { mutableStateOf(false) }
     var menuExport by remember { mutableStateOf(false) }
@@ -604,6 +609,37 @@ fun EcranProjet(
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
+            }
+
+            // Prise de vue en cours : la photo suivante devient la page 2, 3…
+            // du même justificatif (facture sur deux feuilles, ticket + facture).
+            // « Terminer » referme la prise de vue : la prochaine photo créera
+            // une nouvelle dépense.
+            if (capture != null && !projet.cloture) {
+                Card(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    ),
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(
+                            "Justificatif en cours : " +
+                                if (capture.pages > 1) "${capture.pages} pages" else "1 page",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            "La photo suivante s'ajoute à ce justificatif. « Terminer » " +
+                                "referme la prise de vue.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = onAjouterPage) { Text("Ajouter une page (photo)") }
+                            TextButton(onClick = onTerminerCapture) { Text("Terminer") }
+                        }
+                    }
+                }
             }
 
             OutlinedTextField(

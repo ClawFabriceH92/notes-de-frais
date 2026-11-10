@@ -168,6 +168,21 @@ class DatesEtProfilsTest {
         assertNull(com.trucdecomptable.notesdefrais.data.Plafonds.alerte(petitDejeuner, zoneParis = false))
     }
 
+    @Test
+    fun `l adresse d envoi retombe sur l email des exports`() {
+        // Chaque société a deux adresses : l'envoi rapide et les exports
+        // complets. Celle de l'envoi rapide fait foi, mais une société qui n'a
+        // que la seconde reste utilisable pour envoyer ses justificatifs.
+        val complete = Profil(nom = "FAR", emailDestinataire = "export@cabinet.fr", emailMailto = "rapide@fulll.io")
+        assertEquals("rapide@fulll.io", complete.adresseEnvoi)
+
+        val sansMailto = Profil(nom = "CAB", emailDestinataire = "export@cabinet.fr")
+        assertEquals("export@cabinet.fr", sansMailto.adresseEnvoi)
+
+        val vide = Profil(nom = "VIDE", emailDestinataire = "  ", emailMailto = "")
+        assertTrue(vide.adresseEnvoi.isBlank())
+    }
+
     private fun unzip(octets: ByteArray): Map<String, String> {
         val entrees = mutableMapOf<String, String>()
         ZipInputStream(octets.inputStream()).use { zip ->

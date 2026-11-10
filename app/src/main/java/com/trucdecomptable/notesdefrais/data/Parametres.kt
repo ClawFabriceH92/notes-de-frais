@@ -166,6 +166,10 @@ class ParametresStore(context: Context) {
         prefs.edit().putString(CLE, brut).apply()
     }
 
+    /** Écriture sûre pour la restauration : attend la fin de l'écriture et dit si elle a réussi. */
+    fun ecrireJsonSynchrone(brut: String): Boolean =
+        prefs.edit().putString(CLE, brut).commit()
+
     fun lireJson(): String? = prefs.getString(CLE, null)
 
     companion object {

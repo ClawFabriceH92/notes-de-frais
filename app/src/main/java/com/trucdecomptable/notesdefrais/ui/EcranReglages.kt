@@ -371,7 +371,9 @@ fun EcranReglages(
             }
             Text(
                 "Une sauvegarde complète (dépenses, justificatifs, paramétrage) est aussi créée " +
-                    "automatiquement avant chaque mise à jour de l'app.",
+                    "automatiquement avant chaque mise à jour de l'app. Une restauration remplace " +
+                    "tout : vous voyez le contenu de l'archive et confirmez avant, l'état actuel est " +
+                    "sauvegardé d'abord, puis l'app redémarre.",
                 style = MaterialTheme.typography.bodySmall,
             )
 

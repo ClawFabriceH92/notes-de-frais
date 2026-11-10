@@ -101,6 +101,14 @@ data class Profil(
     val moyens: List<String>
         get() = moyensPaiement.split('|').map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
+    /**
+     * Adresse d'envoi des justificatifs de cette société : celle de l'envoi
+     * rapide, et à défaut celle des exports complets. Une société dont seule la
+     * première adresse est renseignée reste utilisable.
+     */
+    val adresseEnvoi: String
+        get() = emailMailto.trim().ifBlank { emailDestinataire.trim() }
+
     /** Tout ce qu'on peut choisir sur une dépense de cette société. */
     fun moyensAvec(communs: List<String>): List<String> = (communs + moyens).distinct()
 }
