@@ -635,7 +635,11 @@ fun EcranProjet(
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = onAjouterPage) { Text("Ajouter une page (photo)") }
+                            // Le numéro de la page à venir est écrit sur le
+                            // bouton : on voit d'un coup d'œil où on en est.
+                            TextButton(onClick = onAjouterPage) {
+                                Text("Ajouter la page ${capture.pages + 1}")
+                            }
                             TextButton(onClick = onTerminerCapture) { Text("Terminer") }
                         }
                     }

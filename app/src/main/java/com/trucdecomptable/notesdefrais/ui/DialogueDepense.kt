@@ -547,7 +547,10 @@ fun DialogueDepense(
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { prendrePhotoPage() }) {
-                            Text(if (pieces.isEmpty()) "Prendre une photo" else "Ajouter une page (photo)")
+                            Text(
+                                if (pieces.isEmpty()) "Prendre une photo"
+                                else "Ajouter la page ${pieces.size + 1}",
+                            )
                         }
                         TextButton(onClick = { launcherPiece.launch(arrayOf("image/*", "application/pdf")) }) {
                             Text("Ajouter un fichier (photo ou PDF)")

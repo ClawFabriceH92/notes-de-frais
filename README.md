@@ -40,8 +40,8 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   directement dans le projet ouvert, et attend le choix d'un projet si aucun
   n'est ouvert. Plusieurs fichiers partagés d'un coup sont acceptés.
 - **Justificatif de plusieurs pages** (v1.21.0) : après une photo, un bandeau
-  « Justificatif en cours » garde la dépense ouverte ; « Ajouter une page
-  (photo) » enchaîne les vues de la même pièce (facture sur deux feuilles, ticket
+  « Justificatif en cours » garde la dépense ouverte ; le bouton
+  « Ajouter la page 2 » (puis 3, 4…) enchaîne les vues de la même pièce (facture sur deux feuilles, ticket
   plus facture, note d'hôtel et son annexe) au lieu de créer une dépense de plus.
   « Terminer » referme la prise de vue. Depuis la fiche d'une dépense, les mêmes
   boutons ajoutent une page à la caméra ou un fichier. À l'export, **toutes les
