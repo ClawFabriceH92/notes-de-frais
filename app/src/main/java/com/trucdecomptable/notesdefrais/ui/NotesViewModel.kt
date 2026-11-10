@@ -897,6 +897,129 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         _capture.value = null
     }
 
+    // ------------------------------------------- photos d'un envoi direct
+
+    /**
+     * Une pièce photographiée pour l'envoi direct de l'accueil : ses pages dans
+     * l'ordre. Aucune dépense n'est créée, l'envoi rapide se veut sans note de
+     * frais ; les fichiers restent dans le dossier des justificatifs le temps de
+     * l'envoi, puis sont effacés.
+     */
+    data class PhotoEnvoi(val id: Long, val pages: List<String>)
+
+    private val _photosEnvoi = MutableStateFlow<List<PhotoEnvoi>>(emptyList())
+    val photosEnvoi: StateFlow<List<PhotoEnvoi>> = _photosEnvoi.asStateFlow()
+    private var prochainIdEnvoi = 1L
+
+    /** Photographie une pièce de plus pour l'envoi direct (sa première page). */
+    fun ajouterPhotoEnvoi(uri: Uri) {
+        viewModelScope.launch {
+            _traitement.value = true
+            try {
+                val fichier = withContext(Dispatchers.IO) { ReceiptOcr.stocker(getApplication(), uri) }
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        ReceiptOcr.lire(
+                            getApplication(),
+                            fichier,
+                            recadrage = _parametres.value.recadrageAuto,
+                        )
+                    }.onFailure { Diag.record("envoi/recadrage", it) }
+                }
+                val piece = PhotoEnvoi(prochainIdEnvoi++, listOf(fichier.name))
+                _photosEnvoi.value = _photosEnvoi.value + piece
+                _message.value = "Photo ajoutée à l'envoi"
+            } catch (e: Exception) {
+                Diag.record("envoi/photo", e)
+                _message.value = "Photo non ajoutée : ${e.message ?: "erreur"}"
+            } finally {
+                _traitement.value = false
+            }
+        }
+    }
+
+    /** Ajoute une page (photo 2, 3…) à une pièce de l'envoi direct. */
+    fun ajouterPageEnvoi(pieceId: Long, uri: Uri) {
+        viewModelScope.launch {
+            _traitement.value = true
+            try {
+                val fichier = withContext(Dispatchers.IO) { ReceiptOcr.stocker(getApplication(), uri) }
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        ReceiptOcr.lire(
+                            getApplication(),
+                            fichier,
+                            recadrage = _parametres.value.recadrageAuto,
+                        )
+                    }.onFailure { Diag.record("envoi/page", it) }
+                }
+                _photosEnvoi.value = _photosEnvoi.value.map { piece ->
+                    if (piece.id == pieceId) piece.copy(pages = piece.pages + fichier.name) else piece
+                }
+                _message.value = "Page ajoutée à l'envoi"
+            } catch (e: Exception) {
+                Diag.record("envoi/page", e)
+                _message.value = "Page non ajoutée : ${e.message ?: "erreur"}"
+            } finally {
+                _traitement.value = false
+            }
+        }
+    }
+
+    /** Retire une pièce de l'envoi direct et efface ses photos. */
+    fun retirerPhotoEnvoi(pieceId: Long) {
+        val piece = _photosEnvoi.value.firstOrNull { it.id == pieceId } ?: return
+        _photosEnvoi.value = _photosEnvoi.value.filterNot { it.id == pieceId }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val dossier = ExportManager.dossierJustificatifs(getApplication())
+                piece.pages.forEach { File(dossier, it).delete() }
+            }
+        }
+    }
+
+    /** L'envoi direct est parti : ses photos ne servent plus, on les efface. */
+    fun oublierPhotosEnvoi() {
+        val pieces = _photosEnvoi.value
+        _photosEnvoi.value = emptyList()
+        if (pieces.isEmpty()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val dossier = ExportManager.dossierJustificatifs(getApplication())
+                pieces.flatMap { it.pages }.forEach { File(dossier, it).delete() }
+            }
+        }
+    }
+
+    /**
+     * Met les photos de l'envoi direct en PDF : un fichier par pièce, ses pages à
+     * la suite. Aucune dépense ne les nomme, le nom porte donc la société et la
+     * date du jour ; les fichiers vont dans un dossier `pdf_…` que le ménage des
+     * exports efface au bout de deux jours.
+     */
+    suspend fun preparerPdfPhotosEnvoi(societe: String): List<File> = withContext(Dispatchers.IO) {
+        val pieces = _photosEnvoi.value
+        if (pieces.isEmpty()) return@withContext emptyList()
+        val horodatage = java.time.LocalDateTime.now()
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+        val prefixe = ExportManager.slugProjet(societe.ifBlank { "Envoi_rapide" })
+        val dossier = File(
+            ExportManager.dossierExports(getApplication()),
+            "pdf_${prefixe}_envoi-rapide_$horodatage",
+        ).apply { mkdirs() }
+        val dossierPieces = ExportManager.dossierJustificatifs(getApplication())
+        pieces.mapIndexedNotNull { index, piece ->
+            val nom = "${prefixe}_${LocalDate.now()}_envoi-rapide_Justif${index + 1}.pdf"
+            val sortie = File(dossier, nom)
+            ExportManager.pagesVersPdf(
+                piece.pages.map { File(dossierPieces, it) },
+                sortie,
+                ExportManager.enteteJustificatif(nom),
+            )
+            sortie.takeIf { it.length() > 0L }
+        }
+    }
+
     /** Files handed over by another app, waiting for a project to land in. */
     private val _partagesEnAttente = MutableStateFlow<List<Uri>>(emptyList())
 

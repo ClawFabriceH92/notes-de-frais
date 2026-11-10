@@ -170,6 +170,7 @@ private fun RacineContenu(
     val nbCorbeille by vm.nbCorbeille.collectAsStateWithLifecycle()
     val remplacementTicket by vm.remplacementTicket.collectAsStateWithLifecycle()
     val capture by vm.capture.collectAsStateWithLifecycle()
+    val photosEnvoi by vm.photosEnvoi.collectAsStateWithLifecycle()
 
     // Moyens de paiement proposés : les communs, plus ceux de la société en cours.
     val moyensPaiement = remember(parametres.moyensPaiement, profilActif) {
@@ -179,13 +180,13 @@ private fun RacineContenu(
     val snackbar = remember { SnackbarHostState() }
     val portee = rememberCoroutineScope()
     var uriPhoto by remember { mutableStateOf<Uri?>(null) }
-    // Dépense qui reçoit la photo quand on en est aux pages 2, 3… d'un
-    // justificatif ; null quand la photo crée une nouvelle dépense.
-    var ciblePhoto by remember { mutableStateOf<Long?>(null) }
+    // Ce que la prochaine photo doit devenir : une nouvelle dépense, une page
+    // d'une dépense existante, ou une pièce de l'envoi direct de l'accueil.
+    var ciblePhoto by remember { mutableStateOf<CiblePhoto>(CiblePhoto.NouvelleDepense) }
     // La photo en cours servira-t-elle un justificatif de plusieurs pages ?
     // La question est posée au moment de prendre la photo, pas après.
     var plusieursPages by remember { mutableStateOf(false) }
-    // Fenêtre « une page ou plusieurs pages », ouverte par « Prendre une photo ».
+    // « Prendre une photo » dans un projet : une page ou plusieurs ?
     var choixPages by remember { mutableStateOf(false) }
     var reglages by remember { mutableStateOf(false) }
     // Envoi rapide : la fenêtre s'ouvre depuis l'icône e-mail de l'accueil.
@@ -204,15 +205,17 @@ private fun RacineContenu(
         val uri = uriPhoto
         val cible = ciblePhoto
         val plusieurs = plusieursPages
-        ciblePhoto = null
+        ciblePhoto = CiblePhoto.NouvelleDepense
         plusieursPages = false
-        // Une photo prise pendant la prise de vue en cours devient une page du
-        // justificatif déjà enregistré, au lieu d'une dépense de plus.
         if (reussi && uri != null) {
-            if (cible != null) {
-                vm.ajouterPageJustificatif(cible, uri)
-            } else {
-                vm.traiterJustificatif(uri, plusieursPages = plusieurs)
+            when (cible) {
+                // Page 2, 3… d'un justificatif déjà enregistré.
+                is CiblePhoto.PageDepense -> vm.ajouterPageJustificatif(cible.depenseId, uri)
+                // Page de plus sur une pièce de l'envoi direct.
+                is CiblePhoto.PageEnvoi -> vm.ajouterPageEnvoi(cible.pieceId, uri)
+                // Photo prise pour l'envoi direct : aucune dépense créée.
+                CiblePhoto.NouvellePieceEnvoi -> vm.ajouterPhotoEnvoi(uri)
+                CiblePhoto.NouvelleDepense -> vm.traiterJustificatif(uri, plusieursPages = plusieurs)
             }
         }
     }
@@ -240,12 +243,12 @@ private fun RacineContenu(
         onPartagesLus()
     }
 
-    fun prendrePhoto(pourDepense: Long? = null, plusieurs: Boolean = false) {
+    fun prendrePhoto(cible: CiblePhoto = CiblePhoto.NouvelleDepense, plusieurs: Boolean = false) {
         val dossier = File(context.cacheDir, "photos").apply { mkdirs() }
         val fichier = File(dossier, "photo-${System.currentTimeMillis()}.jpg")
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", fichier)
         uriPhoto = uri
-        ciblePhoto = pourDepense
+        ciblePhoto = cible
         plusieursPages = plusieurs
         launcherPhoto.launch(uri)
     }
@@ -316,9 +319,10 @@ private fun RacineContenu(
 
     /**
      * Envoi rapide (icône e-mail de l'accueil) : rassemble les justificatifs de
-     * la société choisie, les met en PDF et ouvre le mail prérempli vers
-     * l'adresse « mailto » de cette société. Aucune note de frais à remplir,
-     * aucun projet à créer.
+     * la société choisie ET les photos prises à la volée depuis la fenêtre
+     * d'envoi, les met en PDF et ouvre le mail prérempli vers l'adresse de cette
+     * société. Aucune note de frais à remplir, aucun projet à créer : une photo
+     * de ticket peut donc partir seule, sans jamais entrer dans un projet.
      */
     suspend fun envoyerMailtoRapide(
         adresseDemandee: String,
@@ -344,9 +348,12 @@ private fun RacineContenu(
         } else {
             vm.depensesDuProfil(profil.id)
         }
-        if (depenses.isEmpty()) {
+        // Les photos prises depuis la fenêtre d'envoi : elles n'appartiennent à
+        // aucun projet et partent quand même, avec le reste s'il y en a.
+        val photos = vm.photosEnvoi.value
+        if (depenses.isEmpty() && photos.isEmpty()) {
             val ou = projetChoisi?.let { "le projet ${it.nom}" } ?: profil.nom
-            vm.signaler("Aucun justificatif à envoyer pour $ou.")
+            vm.signaler("Aucun justificatif à envoyer pour $ou : prends une photo.")
             return
         }
         // Un projet fictif ne sert qu'à nommer les fichiers produits : rien n'est
@@ -356,7 +363,12 @@ private fun RacineContenu(
             profilId = profil.id,
         )
         val fichiers = try {
-            ExportManager.justificatifsPdf(context, projetEnvoi, depenses, parametres, profil)
+            val desProjets = if (depenses.isEmpty()) {
+                emptyList()
+            } else {
+                ExportManager.justificatifsPdf(context, projetEnvoi, depenses, parametres, profil)
+            }
+            desProjets + vm.preparerPdfPhotosEnvoi(profil.nom)
         } catch (e: Exception) {
             Diag.record("mailto/pdf", e)
             vm.signaler("Impossible de préparer le PDF : ${e.message ?: e.javaClass.simpleName}")
@@ -374,6 +386,8 @@ private fun RacineContenu(
             email = adresse,
             corps = EnvoiMailto.corps(profil.nom, fichiers.size, nomProjet = projetChoisi?.nom),
         )
+        // Les photos ont été mises en PDF : elles ne servent plus.
+        vm.oublierPhotosEnvoi()
     }
 
 
@@ -396,11 +410,11 @@ private fun RacineContenu(
         DialogueChoixPages(
             onUnePage = {
                 choixPages = false
-                prendrePhoto(plusieurs = false)
+                prendrePhoto(CiblePhoto.NouvelleDepense, plusieurs = false)
             },
             onPlusieursPages = {
                 choixPages = false
-                prendrePhoto(plusieurs = true)
+                prendrePhoto(CiblePhoto.NouvelleDepense, plusieurs = true)
             },
             onAnnuler = { choixPages = false },
         )
@@ -414,6 +428,12 @@ private fun RacineContenu(
             projets = tousProjets,
             profilInitial = profilActif,
             adresseInitiale = profilActif?.adresseEnvoi.orEmpty(),
+            pieces = photosEnvoi,
+            // La photo est prise sans quitter la fenêtre : elle rejoint l'envoi,
+            // et « Ajouter la page 2 » complète la même pièce.
+            onPrendrePhoto = { prendrePhoto(CiblePhoto.NouvellePieceEnvoi) },
+            onAjouterPage = { piece -> prendrePhoto(CiblePhoto.PageEnvoi(piece.id)) },
+            onRetirerPiece = { piece -> vm.retirerPhotoEnvoi(piece.id) },
             onFermer = { dialogueMailto = false },
             onEnvoyer = { adresse, societe, projetChoisi ->
                 dialogueMailto = false
@@ -592,7 +612,7 @@ private fun RacineContenu(
                 onCorbeille = { corbeilleOuverte = true },
                 nbCorbeille = nbCorbeille,
                 capture = capture,
-                onAjouterPage = { capture?.let { prendrePhoto(it.depenseId) } },
+                onAjouterPage = { capture?.let { prendrePhoto(CiblePhoto.PageDepense(it.depenseId)) } },
                 onTerminerCapture = vm::terminerCapture,
             )
         }
@@ -861,4 +881,26 @@ private fun DialogueMiseAJour(
 
         UpdateManager.State.Idle -> Unit
     }
+}
+
+/**
+ * Ce que devient la prochaine photo prise dans l'app.
+ *
+ * Le même appareil photo sert à trois choses : créer un justificatif dans un
+ * projet, ajouter une page à un justificatif existant, ou joindre une photo à
+ * l'envoi direct de l'accueil (qui ne crée aucune dépense). La cible est posée
+ * juste avant l'ouverture de l'appareil, puis remise à zéro au retour.
+ */
+sealed interface CiblePhoto {
+    /** Photo d'une nouvelle dépense, dans le projet ouvert. */
+    data object NouvelleDepense : CiblePhoto
+
+    /** Page 2, 3… d'un justificatif déjà enregistré. */
+    data class PageDepense(val depenseId: Long) : CiblePhoto
+
+    /** Photo jointe à l'envoi direct : aucune dépense n'est créée. */
+    data object NouvellePieceEnvoi : CiblePhoto
+
+    /** Page de plus sur une pièce de l'envoi direct. */
+    data class PageEnvoi(val pieceId: Long) : CiblePhoto
 }

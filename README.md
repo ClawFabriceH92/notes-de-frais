@@ -133,7 +133,12 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   paramétrage si la société n'en a pas). L'envoi rapide (icône e-mail de
   l'accueil) demande d'abord **la société** : chacune a son adresse, la choisir
   remplit le champ « À » et restreint les projets proposés à ceux de cette
-  société ; l'adresse reste modifiable pour un envoi ponctuel. L'adresse visée est rappelée sur la
+  société ; l'adresse reste modifiable pour un envoi ponctuel. Depuis la
+  v1.22.0, cette fenêtre permet aussi de **prendre une photo** (icône e-mail de
+  l'accueil, section « Photos à joindre ») : la pièce part en PDF avec l'envoi,
+  sans créer de dépense ni de projet, et « Ajouter la page 2 » complète la même
+  pièce. Les photos prises ainsi sont effacées une fois le mail remis à la
+  messagerie. L'adresse visée est rappelée sur la
   fiche du projet (« PDF → … ») et sous chaque société dans le paramétrage. Une
   photo est convertie en PDF avec son nom de fichier en haut de page, un PDF est
   joint tel quel ; les noms restent ceux du ZIP (`…_JustifN`).

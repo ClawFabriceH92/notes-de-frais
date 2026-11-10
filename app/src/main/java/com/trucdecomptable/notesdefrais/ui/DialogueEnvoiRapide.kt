@@ -51,6 +51,10 @@ fun DialogueEnvoiRapide(
     projets: List<Projet>,
     profilInitial: Profil?,
     adresseInitiale: String,
+    pieces: List<NotesViewModel.PhotoEnvoi> = emptyList(),
+    onPrendrePhoto: (() -> Unit)? = null,
+    onAjouterPage: ((NotesViewModel.PhotoEnvoi) -> Unit)? = null,
+    onRetirerPiece: ((NotesViewModel.PhotoEnvoi) -> Unit)? = null,
     onFermer: () -> Unit,
     onEnvoyer: (adresse: String, profil: Profil?, projet: Projet?) -> Unit,
 ) {
@@ -127,6 +131,44 @@ fun DialogueEnvoiRapide(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
+                }
+
+                // Photos prises à la volée depuis cette fenêtre : elles partent
+                // en PDF sans créer de note de frais ni de projet.
+                if (onPrendrePhoto != null) {
+                    Text(
+                        "Photos à joindre",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (pieces.isEmpty()) {
+                        Text(
+                            "Aucune photo. « Prendre une photo » joint un ticket ou une facture " +
+                                "directement à cet envoi, sans créer de dépense.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                    pieces.forEachIndexed { index, piece ->
+                        Column {
+                            Text(
+                                "Photo ${index + 1} · " +
+                                    if (piece.pages.size > 1) "${piece.pages.size} pages" else "1 page",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (onAjouterPage != null) {
+                                    TextButton(onClick = { onAjouterPage(piece) }) {
+                                        Text("Ajouter la page ${piece.pages.size + 1}")
+                                    }
+                                }
+                                if (onRetirerPiece != null) {
+                                    TextButton(onClick = { onRetirerPiece(piece) }) { Text("Retirer") }
+                                }
+                            }
+                        }
+                    }
+                    TextButton(onClick = onPrendrePhoto) { Text("Prendre une photo") }
                 }
 
                 Text("Quoi envoyer", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
