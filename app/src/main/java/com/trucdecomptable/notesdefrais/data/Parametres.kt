@@ -55,6 +55,12 @@ data class Parametres(
      * conservée. Désactivable dans le paramétrage.
      */
     val recadrageAuto: Boolean = true,
+    /**
+     * Nom du projet inscrit en tête de chaque page des PDF de justificatif,
+     * dans un bandeau plein (texte blanc sur fond vert) : une feuille imprimée
+     * reste rattachée à sa mission. Option du paramétrage.
+     */
+    val nomProjetSurPdf: Boolean = true,
 ) {
     val verrouillageActif: Boolean get() = codeAccesHash.isNotBlank()
 
@@ -98,6 +104,7 @@ data class Parametres(
         put("profilCourant", profilCourant)
         put("moyensPaiementV2", moyensPaiementV2)
         put("recadrageAuto", recadrageAuto)
+        put("nomProjetSurPdf", nomProjetSurPdf)
     }
 
     companion object {
@@ -144,6 +151,7 @@ data class Parametres(
             profilCourant = json.optLong("profilCourant", 0L),
             moyensPaiementV2 = json.optBoolean("moyensPaiementV2", false),
             recadrageAuto = json.optBoolean("recadrageAuto", true),
+            nomProjetSurPdf = json.optBoolean("nomProjetSurPdf", true),
         )
     }
 }

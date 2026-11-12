@@ -92,6 +92,7 @@ fun EcranReglages(
     var nouvelOrganisme by remember { mutableStateOf<String?>(null) }
     var pieceEnGrand by remember { mutableStateOf(initial.pieceEnGrand) }
     var recadrageAuto by remember { mutableStateOf(initial.recadrageAuto) }
+    var nomProjetSurPdf by remember { mutableStateOf(initial.nomProjetSurPdf) }
     var profilEdite by remember { mutableStateOf<Profil?>(null) }
     var code by remember { mutableStateOf("") }
     var codeHash by remember { mutableStateOf(initial.codeAccesHash) }
@@ -122,6 +123,7 @@ fun EcranReglages(
         profilCourant = initial.profilCourant,
         moyensPaiementV2 = initial.moyensPaiementV2,
         recadrageAuto = recadrageAuto,
+        nomProjetSurPdf = nomProjetSurPdf,
     )
 
     Scaffold(
@@ -281,6 +283,14 @@ fun EcranReglages(
                 Text(
                     "  Ne garder que le ticket sur une photo (le fond est coupé). " +
                         "Le recadrage manuel reste disponible sur la pièce jointe.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = nomProjetSurPdf, onCheckedChange = { nomProjetSurPdf = it })
+                Text(
+                    "  Nom du projet en tête des PDF (bandeau vert, texte blanc) : " +
+                        "une feuille imprimée reste rattachée à sa mission.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }

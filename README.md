@@ -145,6 +145,17 @@ justificatif, un ZIP en sortie (récap Excel + PDF renommés).
   fiche du projet (« PDF → … ») et sous chaque société dans le paramétrage. Une
   photo est convertie en PDF avec son nom de fichier en haut de page, un PDF est
   joint tel quel ; les noms restent ceux du ZIP (`…_JustifN`).
+- **Nom du projet sur les PDF** (v1.23.0, option du paramétrage, active par
+  défaut) : chaque page de justificatif porte en tête un **bandeau plein vert
+  avec le nom du projet en blanc gras** (« Projet : Mission Paris »). Le fond est
+  peint avant le texte, sans transparence : le nom reste lisible quel que soit
+  le fond de la photo, à l'impression comme au scanner, et une feuille séparée
+  du reste se rattache à sa mission. Sous le bandeau, le nom du fichier reste
+  inscrit en petit. Le réglage « Nom du projet en tête des PDF » se coupe dans
+  le paramétrage, section « Pièces jointes » : les pages reprennent alors leur
+  en-tête d'origine. Un PDF joint seul est ré-imprimé en image quand le bandeau
+  est demandé (sinon il est recopié tel quel, texte conservé). L'envoi rapide
+  de photos, qui n'a pas de projet, part sans bandeau.
 - **Export ZIP par projet** :
   - `recap.xlsx` : feuille « Dépenses » (détail + total, colonnes « N° » qui
     numérote les justificatifs dans l'ordre du ZIP, « Paiement », « Trajet »,

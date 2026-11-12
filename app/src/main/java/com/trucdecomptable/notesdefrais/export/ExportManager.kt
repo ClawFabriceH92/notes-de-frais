@@ -110,6 +110,19 @@ object ExportManager {
     }
 
     /**
+     * Le nom du projet inscrit en tête de page, quand l'option est active. Il
+     * est annoncé en clair (« Projet : … ») pour qu'une feuille sortie du ZIP
+     * ne puisse pas être prise pour le nom du fournisseur.
+     */
+    fun libelleProjet(nom: String, maxCaracteres: Int = 48): String {
+        val propre = nom.trim()
+        if (propre.isEmpty()) return ""
+        val court = if (propre.length <= maxCaracteres) propre
+        else propre.take(maxCaracteres - 1).trimEnd() + "…"
+        return "Projet : $court"
+    }
+
+    /**
      * Zips the project: recap.xlsx plus one PDF per expense. Returned file lives
      * in filesDir/exports so the FileProvider can hand it to any app.
      */
@@ -129,7 +142,8 @@ object ExportManager {
             val zipFile = File(dossierExports(context), "$prefixe${slug}_$horodatage.zip")
             val dossierPieces = dossierJustificatifs(context)
             val plan = planJustificatifs(slug, depenses) { nom -> File(dossierPieces, nom).exists() }
-            ecrireZip(context, zipFile, feuilles(projet, depenses, parametres, plan, profil), plan)
+            val bandeau = if (parametres.nomProjetSurPdf) libelleProjet(projet.nom) else ""
+            ecrireZip(context, zipFile, feuilles(projet, depenses, parametres, plan, profil), plan, bandeau)
             zipFile
         }
 
@@ -157,13 +171,14 @@ object ExportManager {
 
             val dossierPieces = dossierJustificatifs(context)
             val plan = planJustificatifs(slug, depenses) { nom -> File(dossierPieces, nom).exists() }
+            val bandeau = if (parametres.nomProjetSurPdf) libelleProjet(projet.nom) else ""
             for (justificatif in plan.filter { it.noms.isNotEmpty() }) {
                 val sources = justificatif.depense.tousLesFichiers
                     .map { File(dossierPieces, it) }
                     .filter { it.exists() }
                 // Un justificatif = un PDF, ses pages à la suite.
                 val nom = justificatif.noms.first()
-                pagesVersPdf(sources, File(dossier, nom), enteteJustificatif(nom))
+                pagesVersPdf(sources, File(dossier, nom), enteteJustificatif(nom), bandeau)
             }
             dossier.listFiles().orEmpty()
                 .filter { it.isFile && it.length() > 0L }
@@ -212,6 +227,7 @@ object ExportManager {
             val dossierPieces = dossierJustificatifs(context)
             val plan = planJustificatifs(slug, depenses) { nom -> File(dossierPieces, nom).exists() }
             val feuilles = feuilles(projet, depenses, parametres, plan, profil)
+            val bandeau = if (parametres.nomProjetSurPdf) libelleProjet(projet.nom) else ""
 
             val avecFichiers = plan.filter { it.noms.isNotEmpty() }
             val poids = avecFichiers.associateWith { justificatif ->
@@ -226,7 +242,7 @@ object ExportManager {
             tas.mapIndexed { index, contenu ->
                 val partie = File(dossierExports(context), "${base}_partie${index + 1}.zip")
                 // Le récap n'est mis qu'une fois : il liste tout le projet.
-                ecrireZip(context, partie, if (index == 0) feuilles else emptyList(), contenu)
+                ecrireZip(context, partie, if (index == 0) feuilles else emptyList(), contenu, bandeau)
                 partie
             }
         }
@@ -297,6 +313,7 @@ object ExportManager {
         sortie: File,
         feuilles: List<XlsxWriter.Feuille>,
         plan: List<Justificatif>,
+        bandeau: String = "",
     ) {
         val dossierPieces = dossierJustificatifs(context)
         ZipOutputStream(FileOutputStream(sortie)).use { zip ->
@@ -316,12 +333,18 @@ object ExportManager {
                     .filter { it.exists() }
                 val nom = justificatif.noms.first()
                 zip.putNextEntry(ZipEntry(nom))
-                if (sources.size == 1 && estPdf(sources.first())) {
+                // Un PDF déjà fourni est recopié tel quel (texte conservé) sauf
+                // quand le nom du projet doit être imprimé en tête : il faut
+                // alors le rendre en image pour y ajouter le bandeau.
+                if (sources.size == 1 && estPdf(sources.first()) && bandeau.isBlank()) {
                     sources.first().inputStream().use { it.copyTo(zip) }
                 } else {
                     val pdf = File(context.cacheDir, "tmp-justif-${justificatif.depense.id}.pdf")
-                    pagesVersPdf(sources, pdf, enteteJustificatif(nom))
-                    pdf.inputStream().use { it.copyTo(zip) }
+                    pagesVersPdf(sources, pdf, enteteJustificatif(nom), bandeau)
+                    // Rien n'a pu être rendu (pièce abîmée) : on joint la source
+                    // brute, l'export ne doit jamais s'arrêter sur une page.
+                    val aJoindre = if (pdf.length() > 0L) pdf else sources.firstOrNull { it.exists() }
+                    aJoindre?.inputStream()?.use { it.copyTo(zip) }
                     pdf.delete()
                 }
                 zip.closeEntry()
@@ -353,6 +376,104 @@ object ExportManager {
     private const val MARGE_A4 = 24f
 
     /**
+     * Bandeau du nom de projet. Le vert de l'application est assez sombre pour
+     * que le texte blanc garde son contraste même sur une impression en noir et
+     * blanc ou sur un scanner qui éclaircit ; le fond est peint en plein (aucune
+     * transparence) pour que le texte ne se perde jamais dans la photo.
+     */
+    private const val COULEUR_BANDEAU = 0xFF1B6B4A.toInt()
+    private const val HAUTEUR_BANDEAU = 30f
+
+    /** Coupe [texte] avec « … » pour qu'il tienne dans [largeurMax] points. */
+    private fun ajusterALaLargeur(texte: String, encre: Paint, largeurMax: Float): String {
+        if (encre.measureText(texte) <= largeurMax) return texte
+        var fin = texte.length
+        while (fin > 1) {
+            val candidat = texte.take(fin).trimEnd() + "…"
+            if (encre.measureText(candidat) <= largeurMax) return candidat
+            fin--
+        }
+        return "…"
+    }
+
+    /** Ajoute une image en page A4 du justificatif, en-tête en haut de page. */
+    private fun ajouterPageImage(
+        document: PdfDocument,
+        bitmap: android.graphics.Bitmap,
+        entete: String,
+        numero: Int,
+        bandeau: String = "",
+    ) {
+        val page = document.startPage(
+            PdfDocument.PageInfo.Builder(LARGEUR_A4, HAUTEUR_A4, numero).create(),
+        )
+        val canvas = page.canvas
+        canvas.drawColor(Color.WHITE)
+
+        var hautUtile = 0f
+        // Le nom du projet, en tête de chaque page : une feuille imprimée ou
+        // sortie du ZIP reste rattachée à sa mission, même séparée du reste.
+        if (bandeau.isNotBlank()) {
+            canvas.drawRect(
+                0f,
+                0f,
+                LARGEUR_A4.toFloat(),
+                HAUTEUR_BANDEAU,
+                Paint().apply { color = COULEUR_BANDEAU },
+            )
+            val encreProjet = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                textSize = 13f
+                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            }
+            canvas.drawText(
+                ajusterALaLargeur(bandeau, encreProjet, LARGEUR_A4 - 2 * MARGE_A4),
+                MARGE_A4,
+                HAUTEUR_BANDEAU / 2 + 13f * 0.36f,
+                encreProjet,
+            )
+            hautUtile = HAUTEUR_BANDEAU
+        }
+        hautUtile += MARGE_A4
+
+        // Le nom du fichier en haut de page : une fois la pièce imprimée ou
+        // sortie du ZIP, elle reste identifiable sans son nom de fichier. Les
+        // pages suivantes portent le même nom avec leur rang, pour qu'une page
+        // égarée se rattache à son justificatif.
+        val titre = when {
+            entete.isBlank() -> ""
+            numero <= 1 -> entete
+            else -> "$entete (page $numero)"
+        }
+        if (titre.isNotBlank()) {
+            val encre = Paint(Paint.ANTI_ALIAS_FLAG)
+            encre.color = Color.DKGRAY
+            encre.textSize = 9f
+            canvas.drawText(titre, MARGE_A4, hautUtile + 9f, encre)
+            // Filet de séparation, pour que l'en-tête ne se confonde pas avec le
+            // haut du ticket photographié.
+            val trait = Paint().apply { color = Color.LTGRAY; strokeWidth = 0.5f }
+            canvas.drawLine(MARGE_A4, hautUtile + 14f, LARGEUR_A4 - MARGE_A4, hautUtile + 14f, trait)
+            hautUtile += 22f
+        }
+
+        val dispoLargeur = LARGEUR_A4 - 2 * MARGE_A4
+        val dispoHauteur = HAUTEUR_A4 - hautUtile - MARGE_A4
+        val echelle = minOf(dispoLargeur / bitmap.width, dispoHauteur / bitmap.height, 3f)
+        val dessineLargeur = bitmap.width * echelle
+        val dessineHauteur = bitmap.height * echelle
+        val gauche = (LARGEUR_A4 - dessineLargeur) / 2f
+        val haut = hautUtile + (dispoHauteur - dessineHauteur) / 2f
+        canvas.drawBitmap(
+            bitmap,
+            null,
+            android.graphics.RectF(gauche, haut, gauche + dessineLargeur, haut + dessineHauteur),
+            Paint(Paint.FILTER_BITMAP_FLAG),
+        )
+        document.finishPage(page)
+    }
+
+    /**
      * Écrit un justificatif en PDF, **toutes ses pages dans le même fichier**.
      *
      * Un justificatif tient parfois en plusieurs prises de vue : une facture
@@ -361,15 +482,18 @@ object ExportManager {
      * recoller les morceaux et de se demander si la page 2 appartient bien à la
      * même dépense.
      *
-     * Un PDF déjà fourni est recopié tel quel quand il est seul (aucune perte,
-     * texte conservé) ; sinon ses pages sont rendues en images pour entrer dans
-     * le document commun, faute de pouvoir fusionner deux PDF sans bibliothèque
-     * supplémentaire.
+     * Un PDF déjà fourni est recopié tel quel quand il est seul et qu'aucun
+     * bandeau n'est demandé (aucune perte, texte conservé) ; sinon ses pages
+     * sont rendues en images pour entrer dans le document commun, faute de
+     * pouvoir fusionner deux PDF sans bibliothèque supplémentaire.
+     *
+     * [bandeau] est le nom du projet imprimé en tête de chaque page, sur fond
+     * plein (voir [libelleProjet]) ; vide, il n'y a pas de bandeau.
      */
-    fun pagesVersPdf(sources: List<File>, sortie: File, entete: String = "") {
+    fun pagesVersPdf(sources: List<File>, sortie: File, entete: String = "", bandeau: String = "") {
         val pages = sources.filter { it.exists() && it.length() > 0L }
         if (pages.isEmpty()) return
-        if (pages.size == 1 && estPdf(pages[0])) {
+        if (pages.size == 1 && estPdf(pages[0]) && bandeau.isBlank()) {
             pages[0].copyTo(sortie, overwrite = true)
             return
         }
@@ -380,27 +504,33 @@ object ExportManager {
                 if (estPdf(source)) {
                     rendrePdf(source) { bitmap ->
                         numero++
-                        ajouterPageImage(document, bitmap, entete, numero)
+                        ajouterPageImage(document, bitmap, entete, numero, bandeau)
                     }
                 } else {
                     val bitmap = BitmapFactory.decodeFile(source.absolutePath) ?: continue
                     try {
                         numero++
-                        ajouterPageImage(document, bitmap, entete, numero)
+                        ajouterPageImage(document, bitmap, entete, numero, bandeau)
                     } finally {
                         bitmap.recycle()
                     }
                 }
             }
-            if (numero > 0) FileOutputStream(sortie).use { document.writeTo(it) }
+            if (numero > 0) {
+                FileOutputStream(sortie).use { document.writeTo(it) }
+            } else if (pages.size == 1 && estPdf(pages[0])) {
+                // Rendu impossible (PDF protégé ou abîmé) : on garde la pièce
+                // d'origine telle quelle plutôt que de la perdre.
+                pages[0].copyTo(sortie, overwrite = true)
+            }
         } finally {
             document.close()
         }
     }
 
     /** Wraps a receipt photo in a single-page A4 PDF, whole image visible. */
-    fun imageVersPdf(image: File, sortie: File, entete: String = "") {
-        pagesVersPdf(listOf(image), sortie, entete)
+    fun imageVersPdf(image: File, sortie: File, entete: String = "", bandeau: String = "") {
+        pagesVersPdf(listOf(image), sortie, entete, bandeau)
     }
 
     /**
@@ -445,57 +575,6 @@ object ExportManager {
         } finally {
             runCatching { descripteur.close() }
         }
-    }
-
-    /** Ajoute une image en page A4 du justificatif, en-tête en haut de page. */
-    private fun ajouterPageImage(
-        document: PdfDocument,
-        bitmap: android.graphics.Bitmap,
-        entete: String,
-        numero: Int,
-    ) {
-        val page = document.startPage(
-            PdfDocument.PageInfo.Builder(LARGEUR_A4, HAUTEUR_A4, numero).create(),
-        )
-        val canvas = page.canvas
-        canvas.drawColor(Color.WHITE)
-
-        // Le nom du fichier en haut de page : une fois la pièce imprimée ou
-        // sortie du ZIP, elle reste identifiable sans son nom de fichier. Les
-        // pages suivantes portent le même nom avec leur rang, pour qu'une page
-        // égarée se rattache à son justificatif.
-        val titre = when {
-            entete.isBlank() -> ""
-            numero <= 1 -> entete
-            else -> "$entete (page $numero)"
-        }
-        var hautUtile = MARGE_A4
-        if (titre.isNotBlank()) {
-            val encre = Paint(Paint.ANTI_ALIAS_FLAG)
-            encre.color = Color.DKGRAY
-            encre.textSize = 9f
-            canvas.drawText(titre, MARGE_A4, MARGE_A4 + 9f, encre)
-            // Filet de séparation, pour que l'en-tête ne se confonde pas avec le
-            // haut du ticket photographié.
-            val trait = Paint().apply { color = Color.LTGRAY; strokeWidth = 0.5f }
-            canvas.drawLine(MARGE_A4, MARGE_A4 + 14f, LARGEUR_A4 - MARGE_A4, MARGE_A4 + 14f, trait)
-            hautUtile = MARGE_A4 + 22f
-        }
-
-        val dispoLargeur = LARGEUR_A4 - 2 * MARGE_A4
-        val dispoHauteur = HAUTEUR_A4 - hautUtile - MARGE_A4
-        val echelle = minOf(dispoLargeur / bitmap.width, dispoHauteur / bitmap.height, 3f)
-        val dessineLargeur = bitmap.width * echelle
-        val dessineHauteur = bitmap.height * echelle
-        val gauche = (LARGEUR_A4 - dessineLargeur) / 2f
-        val haut = hautUtile + (dispoHauteur - dessineHauteur) / 2f
-        canvas.drawBitmap(
-            bitmap,
-            null,
-            android.graphics.RectF(gauche, haut, gauche + dessineLargeur, haut + dessineHauteur),
-            Paint(Paint.FILTER_BITMAP_FLAG),
-        )
-        document.finishPage(page)
     }
 
     /** The recap workbook: one detail sheet, one recap by expense type. */

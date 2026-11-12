@@ -1,6 +1,7 @@
 package com.trucdecomptable.notesdefrais
 
 import com.trucdecomptable.notesdefrais.data.Depense
+import com.trucdecomptable.notesdefrais.data.Parametres
 import com.trucdecomptable.notesdefrais.data.Projet
 import com.trucdecomptable.notesdefrais.data.TypeDepense
 import com.trucdecomptable.notesdefrais.data.convertirEnEuros
@@ -221,5 +222,31 @@ class ExportTest {
         assertEquals("Z", writer.colonne(25))
         assertEquals("AA", writer.colonne(26))
         assertEquals("AB", writer.colonne(27))
+    }
+
+    @Test
+    fun `bandeau projet - annonce en clair et coupe si trop long`() {
+        // Le bandeau dit « Projet : … » : une feuille imprimée ne peut pas
+        // confondre le nom de la mission avec celui du fournisseur.
+        assertEquals("Projet : Mission Paris", ExportManager.libelleProjet("Mission Paris"))
+        assertEquals("Projet : Mission Paris", ExportManager.libelleProjet("  Mission Paris  "))
+        // Pas de projet : pas de bandeau du tout (la page reste comme avant).
+        assertEquals("", ExportManager.libelleProjet(""))
+        assertEquals("", ExportManager.libelleProjet("   "))
+        // Un nom trop long est coupé, avec les points de suspension.
+        val long = ExportManager.libelleProjet("A".repeat(120))
+        assertTrue(long.endsWith("…"))
+        assertTrue(long.length <= "Projet : ".length + 48)
+    }
+
+    @Test
+    fun `option nom du projet sur les PDF - activee par defaut et conservee`() {
+        // Comportement attendu d'une installation neuve : le nom du projet est
+        // imprimé en tête des PDF.
+        assertTrue(Parametres().nomProjetSurPdf)
+        val coupe = Parametres().copy(nomProjetSurPdf = false)
+        // L'aller-retour JSON (SharedPreferences) ne doit pas la perdre.
+        assertTrue(Parametres.depuisJson(coupe.toJson()).nomProjetSurPdf.not())
+        assertTrue(Parametres.depuisJson(Parametres().toJson()).nomProjetSurPdf)
     }
 }
